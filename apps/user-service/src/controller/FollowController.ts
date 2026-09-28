@@ -1,148 +1,95 @@
 import { Request, Response } from 'express';
-import { AppDataSource } from '../data-source';
-import { User } from '@shared/entities';
-import { Follow } from '@shared/entities';
 import StatusCode from 'http-status-codes';
+import { HttpError, getUser, parsePaging } from '@shared/config';
+import { Follow, User } from '@shared/entities';
+import { AppDataSource } from '../data-source';
+import { requireId } from '../modules/validation';
+
+const isDuplicate = (err: unknown) =>
+  ((err as { code?: string; driverError?: { code?: string } })?.driverError?.code ??
+    (err as { code?: string })?.code) === 'ER_DUP_ENTRY';
 
 export const addFollow = async (req: Request, res: Response) => {
-  const userRepo = AppDataSource.getRepository(User);
-  const followRepo = AppDataSource.getRepository(Follow);
-
-  const followerId = res.locals.user.userId;
-  const followingId = req.body.following_id;
-
-  if (!followingId) {
-    return res.status(StatusCode.BAD_REQUEST).json({ message: '팔로우할 유저 ID 필요' });
-  }
+  const { userId: followerId } = getUser(res);
+  // 문자열 "12"도 숫자로 바꾼 뒤 비교해야 자기 자신 팔로우 검사를 우회할 수 없다.
+  const followingId = requireId(req.body?.following_id, '팔로우할 유저 ID 필요');
 
   if (followerId === followingId) {
-    return res.status(StatusCode.BAD_REQUEST).json({ message: '자기 자신 팔로우 불가' });
+    throw new HttpError(StatusCode.BAD_REQUEST, '자기 자신 팔로우 불가');
+  }
+
+  if (!(await AppDataSource.getRepository(User).exists({ where: { userId: followingId } }))) {
+    throw new HttpError(StatusCode.NOT_FOUND, '존재하지 않는 유저');
+  }
+
+  const followRepo = AppDataSource.getRepository(Follow);
+  if (await followRepo.exists({ where: { followerId, followingId } })) {
+    throw new HttpError(StatusCode.CONFLICT, '이미 팔로우한 유저');
   }
 
   try {
-    const followingUser = await userRepo.findOneBy({ userId: followingId });
-    if (!followingUser) {
-      return res.status(StatusCode.NOT_FOUND).json({ message: '존재하지 않는 유저' });
-    }
-
-    const alreadyFollowed = await followRepo.findOneBy({
-      followerId,
-      followingId,
-    });
-
-    if (alreadyFollowed) {
-      return res.status(StatusCode.CONFLICT).json({ message: '이미 팔로우한 유저' });
-    }
-
-    const follow = followRepo.create({ followerId, followingId });
-    await followRepo.save(follow);
-
-    return res.status(StatusCode.CREATED).json({ message: '팔로우 성공' });
+    await followRepo.insert({ followerId, followingId });
   } catch (err) {
-    console.error(err);
-    return res.status(StatusCode.INTERNAL_SERVER_ERROR).json({ message: '팔로우 실패' });
+    // 동시에 같은 요청이 와서 조회 후 삽입 사이에 다른 요청이 먼저 저장한 경우
+    if (isDuplicate(err)) throw new HttpError(StatusCode.CONFLICT, '이미 팔로우한 유저');
+    throw err;
   }
+
+  res.status(StatusCode.CREATED).json({ message: '팔로우 성공' });
 };
 
 export const deleteFollow = async (req: Request, res: Response) => {
-  const userRepo = AppDataSource.getRepository(User);
-  const followRepo = AppDataSource.getRepository(Follow);
-
-  const followerId = res.locals.user.userId;
-  const followingId = req.body.following_id;
-
-  if (!followingId) {
-    return res.status(StatusCode.BAD_REQUEST).json({ message: '팔로우 취소할 유저 ID 필요' });
-  }
+  const { userId: followerId } = getUser(res);
+  const followingId = requireId(req.body?.following_id, '팔로우 취소할 유저 ID 필요');
 
   if (followerId === followingId) {
-    return res.status(StatusCode.BAD_REQUEST).json({ message: '자기 자신 언팔로우 불가' });
+    throw new HttpError(StatusCode.BAD_REQUEST, '자기 자신 언팔로우 불가');
   }
 
-  try {
-    const followingUser = await userRepo.findOneBy({ userId: followingId });
-    if (!followingUser) {
-      return res.status(StatusCode.NOT_FOUND).json({ message: '존재하지 않는 유저' });
-    }
-
-    const follow = await followRepo.findOneBy({ followerId, followingId });
-    if (!follow) {
-      return res.status(StatusCode.NOT_FOUND).json({ message: '팔로우하지 않은 유저' });
-    }
-
-    await followRepo.delete(follow);
-
-    return res.status(StatusCode.OK).json({ message: '팔로우 취소 성공' });
-  } catch (err) {
-    console.error(err);
-    return res.status(StatusCode.INTERNAL_SERVER_ERROR).json({ message: '팔로우 취소 실패' });
+  if (!(await AppDataSource.getRepository(User).exists({ where: { userId: followingId } }))) {
+    throw new HttpError(StatusCode.NOT_FOUND, '존재하지 않는 유저');
   }
+
+  const result = await AppDataSource.getRepository(Follow).delete({ followerId, followingId });
+  if (!result.affected) {
+    throw new HttpError(StatusCode.NOT_FOUND, '팔로우하지 않은 유저');
+  }
+
+  res.status(StatusCode.OK).json({ message: '팔로우 취소 성공' });
 };
 
-export const getMyFollowing = async (req: Request, res: Response) => {
-  const followRepo = AppDataSource.getRepository(Follow);
+/** 팔로잉/팔로워 목록 공통: 상대 사용자의 공개 필드만 조회한다. (비밀번호 해시 등을 읽지 않음) */
+const listFollows = async (req: Request, res: Response, side: 'following' | 'follower') => {
+  const { userId } = getUser(res);
+  const { limit, offset } = parsePaging(req.query);
+  const isFollowing = side === 'following';
 
-  const followerId = res.locals.user.userId;
+  const [rows, total] = await AppDataSource.getRepository(Follow).findAndCount({
+    where: isFollowing ? { followerId: userId } : { followingId: userId },
+    relations: { [side]: { image: true } },
+    select: {
+      followerId: true,
+      followingId: true,
+      [side]: { userId: true, nickname: true, image: { imageId: true, url: true } },
+    },
+    order: isFollowing ? { followingId: 'DESC' } : { followerId: 'DESC' },
+    skip: offset,
+    take: limit,
+  });
 
-  try {
-    const followingCount = await followRepo.count({
-      where: { followerId },
-    });
+  const list = rows.map((row) => {
+    const other = row[side];
+    return {
+      userId: other.userId,
+      nickname: other.nickname,
+      imageId: other.image?.imageId ?? null,
+      imageUrl: other.image?.url ?? null,
+    };
+  });
 
-    const followingList = await followRepo.find({
-      where: { followerId },
-      relations: ['following', 'following.image'],
-    });
-
-    const result = followingList.map((follow) => {
-      return {
-        userId: follow.following.userId,
-        nickname: follow.following.nickname,
-        imageId: follow.following.image?.imageId ?? null,
-        imageUrl: follow.following.image?.url ?? null,
-      };
-    });
-
-    return res.status(StatusCode.OK).json({
-      total: followingCount,
-      following: result,
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(StatusCode.INTERNAL_SERVER_ERROR).json({ message: '팔로잉 목록 조회 실패' });
-  }
+  res.status(StatusCode.OK).json({ total, [side]: list });
 };
 
-export const getMyFollower = async (req: Request, res: Response) => {
-  const followRepo = AppDataSource.getRepository(Follow);
+export const getMyFollowing = (req: Request, res: Response) => listFollows(req, res, 'following');
 
-  const followingId = res.locals.user.userId;
-
-  try {
-    const followerCount = await followRepo.count({
-      where: { followingId },
-    });
-
-    const followerList = await followRepo.find({
-      where: { followingId },
-      relations: ['follower', 'follower.image'],
-    });
-
-    const result = followerList.map((follow) => {
-      return {
-        userId: follow.follower.userId,
-        nickname: follow.follower.nickname,
-        imageId: follow.follower.image?.imageId ?? null,
-        imageUrl: follow.follower.image?.url ?? null,
-      };
-    });
-
-    return res.status(StatusCode.OK).json({
-      total: followerCount,
-      follower: result,
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(StatusCode.INTERNAL_SERVER_ERROR).json({ message: '팔로워 목록 조회 실패' });
-  }
-};
+export const getMyFollower = (req: Request, res: Response) => listFollows(req, res, 'follower');

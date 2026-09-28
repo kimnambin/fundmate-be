@@ -1,5 +1,5 @@
 import { Entity, PrimaryColumn, ManyToOne, JoinColumn } from 'typeorm';
-import { User } from '@shared/entities'; // 경로는 실제 프로젝트에 맞게 수정하세요.
+import { User } from '../auth-entities/User';
 
 @Entity('follows')
 export class Follow {

@@ -1,11 +1,10 @@
 import express from 'express';
-const router = express.Router();
-
+import { asyncHandler, requireUser } from '@shared/config';
 import {
   deleteUser,
   getMyPage,
   getMyProfile,
-  UpdateMyProfile,
+  updateMyProfile,
   getMySupportedProjects,
   getMyComments,
   getMyCreatedProjects,
@@ -15,24 +14,27 @@ import {
 import { addFollow, deleteFollow, getMyFollowing, getMyFollower } from '../controller/FollowController';
 import { getMakerProfile, getSupporterProfile } from '../controller/UserPageController';
 
-router.use(express.json());
+const router = express.Router();
 
-router.delete('/account', deleteUser);
-router.get('/mypage', getMyPage);
-router.get('/mypage/profile', getMyProfile);
-router.put('/mypage/profile', UpdateMyProfile);
-router.get('/mypage/payments', getMySupportedProjects);
-router.get('/mypage/comments', getMyComments);
-router.get('/projects', getMyCreatedProjects);
-router.get('/projects/statistics', getMyProjectStatistics);
-router.get('/projects/payments', getMyProjectPayments);
+// 공개 프로필만 로그인 없이 접근할 수 있다. 나머지는 게이트웨이 규칙과 무관하게 서비스에서도 막는다.
+router.get('/maker/:user_id', asyncHandler(getMakerProfile));
+router.get('/supporter/:user_id', asyncHandler(getSupporterProfile));
 
-router.post('/following', addFollow);
-router.delete('/following', deleteFollow);
-router.get('/mypage/following', getMyFollowing);
-router.get('/mypage/follower', getMyFollower);
+router.use(['/account', '/mypage', '/projects', '/following'], requireUser);
 
-router.get('/maker/:user_id', getMakerProfile);
-router.get('/supporter/:user_id', getSupporterProfile);
+router.delete('/account', asyncHandler(deleteUser));
+router.get('/mypage', asyncHandler(getMyPage));
+router.get('/mypage/profile', asyncHandler(getMyProfile));
+router.put('/mypage/profile', asyncHandler(updateMyProfile));
+router.get('/mypage/payments', asyncHandler(getMySupportedProjects));
+router.get('/mypage/comments', asyncHandler(getMyComments));
+router.get('/projects', asyncHandler(getMyCreatedProjects));
+router.get('/projects/statistics', asyncHandler(getMyProjectStatistics));
+router.get('/projects/payments', asyncHandler(getMyProjectPayments));
+
+router.post('/following', asyncHandler(addFollow));
+router.delete('/following', asyncHandler(deleteFollow));
+router.get('/mypage/following', asyncHandler(getMyFollowing));
+router.get('/mypage/follower', asyncHandler(getMyFollower));
 
 export default router;
