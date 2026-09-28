@@ -1,88 +1,108 @@
 import { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
-//import { TokenExpiredError, JsonWebTokenError } from 'jsonwebtoken';
+import { HttpError, getUser, parseId, parsePaging } from '@shared/config';
 import { AppDataSource } from '../data-source';
-//import { ensureAuthorization } from '../modules/ensureAuthorization';
-import { Comment, User, Project } from '@shared/entities';
+import { Comment, Project, User } from '@shared/entities';
 
-export const addComment = async (req: Request, res: Response): Promise<Response | void> => {
-  const projectId = Number(req.params.id);
-  const { contents } = req.body;
+const MAX_COMMENT_LENGTH = 500;
 
-  const { userId } = res.locals.user;
+/** 요청 본문에서 댓글 내용을 꺼내 검증한다. (실제 필드는 `contents`, 문서에 있던 `content`도 허용) */
+const parseContents = (body: unknown): string => {
+  const { contents, content } = (body ?? {}) as Record<string, unknown>;
+  const value = contents ?? content;
 
-  try {
-    const userRepo = AppDataSource.getRepository(User);
-    const projectRepo = AppDataSource.getRepository(Project);
-    const commentRepo = AppDataSource.getRepository(Comment);
-
-    const user = await userRepo.findOneBy({ userId: userId });
-    const project = await projectRepo.findOneBy({ projectId: projectId });
-
-    if (!user || !project) {
-      return res.status(StatusCodes.NOT_FOUND).json({ message: '유저 또는 프로젝트를 찾을 수 없습니다.' });
-    }
-
-    const comment = commentRepo.create({
-      userId: user,
-      project: project,
-      content: contents,
-    });
-
-    const savedComment = await commentRepo.save(comment);
-    return res.status(StatusCodes.CREATED).json(savedComment);
-  } catch (err) {
-    console.error(err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: '댓글 추가에 실패했습니다.' });
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new HttpError(StatusCodes.BAD_REQUEST, '댓글 내용을 입력해 주세요.');
   }
+  const trimmed = value.trim();
+  if (trimmed.length > MAX_COMMENT_LENGTH) {
+    throw new HttpError(StatusCodes.BAD_REQUEST, `댓글은 ${MAX_COMMENT_LENGTH}자 이하로 입력해 주세요.`);
+  }
+  return trimmed;
 };
 
-export const removeComment = async (req: Request, res: Response): Promise<Response | void> => {
-  const commentId = Number(req.params.id);
-  const { userId } = res.locals.user;
-
-  try {
-    const commentRepo = AppDataSource.getRepository(Comment);
-    const comment = await commentRepo.findOne({
-      where: { commentId },
-      relations: ['userId'],
-    });
-
-    if (!comment || comment.userId.userId !== userId) {
-      return res.status(StatusCodes.FORBIDDEN).json({ message: '댓글 삭제 권한이 없습니다.' });
-    }
-
-    await commentRepo.remove(comment);
-    return res.status(StatusCodes.OK).json({ message: '댓글이 삭제되었습니다.' });
-  } catch (err) {
-    console.error(err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: '댓글 삭제에 실패했습니다.' });
-  }
+const requireId = (value: unknown): number => {
+  const id = parseId(value);
+  if (id === null) throw new HttpError(StatusCodes.BAD_REQUEST, '잘못된 ID입니다.');
+  return id;
 };
 
-export const commentList = async (req: Request, res: Response): Promise<Response | void> => {
-  const projectId = Number(req.params.id);
+export const addComment = async (req: Request, res: Response): Promise<void> => {
+  const projectId = requireId(req.params.id);
+  const content = parseContents(req.body);
+  const { userId } = getUser(res);
 
-  try {
-    const commentRepo = AppDataSource.getRepository(Comment);
-    const comments = await commentRepo.find({
-      where: { project: { projectId } },
-      relations: ['userId'],
-      order: { createdAt: 'DESC' },
-    });
+  const projectExists = await AppDataSource.getRepository(Project).exists({ where: { projectId } });
+  if (!projectExists) {
+    throw new HttpError(StatusCodes.NOT_FOUND, '프로젝트를 찾을 수 없습니다.');
+  }
 
-    const response = comments.map((c) => ({
+  // 사용자/프로젝트 엔티티를 통째로 불러오지 않고 ID로만 참조한다. (비밀번호 해시가 응답에 섞이지 않게)
+  const commentRepo = AppDataSource.getRepository(Comment);
+  const saved = await commentRepo.save(
+    commentRepo.create({
+      userId: { userId } as User,
+      project: { projectId } as Project,
+      content,
+    })
+  );
+
+  res.status(StatusCodes.CREATED).json({
+    commentId: saved.commentId,
+    content: saved.content,
+    createdAt: saved.createdAt,
+  });
+};
+
+export const removeComment = async (req: Request, res: Response): Promise<void> => {
+  const commentId = requireId(req.params.id);
+  const { userId } = getUser(res);
+
+  const commentRepo = AppDataSource.getRepository(Comment);
+  const comment = await commentRepo.findOne({
+    where: { commentId },
+    relations: { userId: true },
+    select: { commentId: true, userId: { userId: true } },
+  });
+
+  if (!comment) {
+    throw new HttpError(StatusCodes.NOT_FOUND, '댓글을 찾을 수 없습니다.');
+  }
+  if (comment.userId.userId !== userId) {
+    throw new HttpError(StatusCodes.FORBIDDEN, '댓글 삭제 권한이 없습니다.');
+  }
+
+  await commentRepo.delete({ commentId });
+  res.status(StatusCodes.OK).json({ message: '댓글이 삭제되었습니다.' });
+};
+
+export const commentList = async (req: Request, res: Response): Promise<void> => {
+  const projectId = requireId(req.params.id);
+  const { limit, offset } = parsePaging(req.query);
+
+  const comments = await AppDataSource.getRepository(Comment).find({
+    where: { project: { projectId } },
+    relations: { userId: { image: true } },
+    select: {
+      commentId: true,
+      content: true,
+      createdAt: true,
+      // 필요한 컬럼만 읽는다. (password, salt 등을 메모리로 가져오지 않음)
+      userId: { userId: true, nickname: true, image: { imageId: true } },
+    },
+    order: { createdAt: 'DESC', commentId: 'DESC' },
+    skip: offset,
+    take: limit,
+  });
+
+  res.status(StatusCodes.OK).json(
+    comments.map((c) => ({
       commentId: c.commentId,
       userId: c.userId.userId,
       nickname: c.userId.nickname,
       imgId: c.userId.image?.imageId,
       content: c.content,
       createdAt: c.createdAt,
-    }));
-
-    return res.status(StatusCodes.OK).json(response);
-  } catch (err) {
-    console.error(err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: '댓글 목록 조회에 실패했습니다.' });
-  }
+    }))
+  );
 };

@@ -69,7 +69,7 @@ const rowServiceConfig: Record<string, Omit<ServiceConfig, 'url' | 'host'>> = {
     jwtRules: [
       { method: 'POST', path: '/users/likes/:id', required: true },
       { method: 'DELETE', path: '/users/likes/:id', required: true },
-      { method: 'GET', path: '/users/likes/', required: true },
+      { method: 'GET', path: '/users/likes', required: true },
       { method: 'POST', path: '/comment/:id', required: true },
       { method: 'DELETE', path: '/comment/:id', required: true },
       { method: 'GET', path: '/comment/:id', required: true },

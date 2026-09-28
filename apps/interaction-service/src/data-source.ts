@@ -1,8 +1,5 @@
 import { DataSource } from 'typeorm';
 import dotenv from 'dotenv';
-//import { Like } from '@shared/entities';
-//import { User } from '@shared/entities';
-//import { Project } from '@shared/entities';
 import { interactionEntities } from '@shared/entities';
 dotenv.config();
 
@@ -15,6 +12,7 @@ export const AppDataSource = new DataSource({
   database: process.env.DB_NAME,
   entities: interactionEntities,
   synchronize: false,
-  logging: true,
+  // 쿼리 로그에는 댓글 본문 같은 사용자 입력이 파라미터로 남으므로 오류/경고만 기록한다.
+  logging: process.env.DB_LOGGING === 'true' ? true : ['error', 'warn'],
   timezone: '+09:00',
 });

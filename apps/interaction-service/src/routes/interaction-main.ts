@@ -1,8 +1,9 @@
 import express from 'express';
+import { asyncHandler, requireUser } from '@shared/config';
 import { interactMain } from '../controller/InteractMainController';
 
 const router = express.Router();
-router.use(express.json());
-router.get('/', interactMain);
+
+router.get('/', requireUser, asyncHandler(interactMain));
 
 export default router;
