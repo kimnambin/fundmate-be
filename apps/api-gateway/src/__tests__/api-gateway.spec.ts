@@ -187,6 +187,8 @@ describe('H2: 인증 경계', () => {
     ['GET', '/statistics/summary', 'payment-service'],
     ['POST', '/payments', 'payment-service'],
     ['POST', '/auth/logout', 'auth-service'],
+    ['POST', '/ai/summarize', 'ai-service'],
+    ['POST', '/ai/requests', 'ai-service'],
   ];
 
   it.each(protectedRoutes)('%s %s → 로그인 없이는 401이고 서비스까지 가지 않는다', async (method, path) => {
@@ -217,8 +219,6 @@ describe('H2: 인증 경계', () => {
     ['GET', '/oauth/google', 'auth-service'],
     ['POST', '/datas/option', 'public-service'],
     ['POST', '/datas/keyword', 'public-service'],
-    ['POST', '/ai/summarize', 'ai-service'],
-    ['POST', '/ai/requests', 'ai-service'],
   ];
 
   it.each(publicRoutes)('%s %s → 공개 경로는 로그인 없이 %s 로 전달된다', async (method, path, service) => {

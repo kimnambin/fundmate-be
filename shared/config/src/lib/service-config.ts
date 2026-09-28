@@ -28,9 +28,10 @@ const rowServiceConfig: Record<string, Omit<ServiceConfig, 'url' | 'host'>> = {
     swagger: 'ai.json',
     port: Number(process.env.AI_SERVICE_PORT) || 3001,
     base: ['/ai'],
+    // 유료 LLM을 호출하므로 로그인 필수 (비로그인 허용이 필요하면 required: false로 바꾸고 서비스의 requireUser도 함께 조정)
     jwtRules: [
-      { method: 'POST', path: '/ai/summarize', required: false },
-      { method: 'POST', path: '/ai/requests', required: false },
+      { method: 'POST', path: '/ai/summarize', required: true },
+      { method: 'POST', path: '/ai/requests', required: true },
     ],
   },
   'auth-service': {
