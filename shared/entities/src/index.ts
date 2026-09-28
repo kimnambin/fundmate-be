@@ -20,7 +20,8 @@ export { PaymentHistory, PaymentSchedule, PaymentInfo };
 export { Like, Comment };
 
 export const authEntities = [Age, Category, EmailVerification, Image, InterestCategory, Token, User];
-export const fundingEntities = [Project, OptionData, User, Image, Category, Like, Comment, ...authEntities, PaymentSchedule, PaymentInfo];
+// 관계로 이어진 엔티티만 등록한다. (인증/토큰/이메일 인증 테이블과 결제 이력은 이 서비스에 필요 없다)
+export const fundingEntities = [Project, OptionData, User, Age, Image, Category, Like, Comment, PaymentSchedule, PaymentInfo];
 export const userEntities = [Age, Category, Image, InterestCategory, User, Follow, Token];
 export const interactionEntities = [User, Project, Like, Age, Image, Category, OptionData, Comment, PaymentSchedule, PaymentInfo];
 export const paymentEntities = [PaymentHistory, PaymentSchedule, PaymentInfo, ...fundingEntities];

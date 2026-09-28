@@ -1,77 +1,60 @@
 import { Request, Response } from 'express';
-import { AppDataSource } from '../data-source';
+import { StatusCodes } from 'http-status-codes';
+import { parsePaging } from '@shared/config';
 import { Project } from '@shared/entities';
-import { HttpStatusCode } from 'axios';
+import { AppDataSource } from '../data-source';
+import { LIKE_COUNT, listColumns, whereStatus, withNumbers } from '../modules/projectQuery';
+import { ProjectStatus, parseProjectIds, parseStatus, requireId } from '../modules/validation';
 
-type ProjectType = {
-  imageUrl: string;
-  title: string;
-  shortDescription: string;
-  goalAmount: number;
-  currentAmount: number;
-  achievement: number;
-  remainingDay: number;
+/** 목록 기본 개수와 최댓값. `limit`, `page` 쿼리로 조절한다. */
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 100;
+
+const projects = () => AppDataSource.getRepository(Project).createQueryBuilder('project');
+
+/** 목록 공통 처리: 상태 필터, 정렬, 페이지네이션 */
+const list = async (
+  req: Request,
+  res: Response,
+  options: {
+    defaultStatus?: ProjectStatus;
+    order: [string, 'ASC' | 'DESC'][];
+    extra?: (query: ReturnType<typeof projects>) => void;
+    categoryId?: number;
+  }
+) => {
+  const status = parseStatus(req.query.status, options.defaultStatus);
+  const { limit, offset } = parsePaging(req.query, DEFAULT_LIMIT, MAX_LIMIT);
+
+  const query = listColumns(projects());
+  options.extra?.(query);
+  if (options.categoryId !== undefined) {
+    query.andWhere('project.category_id = :categoryId', { categoryId: options.categoryId });
+  }
+  whereStatus(query, status);
+
+  options.order.forEach(([column, direction], index) =>
+    index === 0 ? query.orderBy(column, direction) : query.addOrderBy(column, direction)
+  );
+
+  // getRawMany에서는 take/skip이 아니라 limit/offset이 SQL에 반영된다.
+  const rows = await query.limit(limit).offset(offset).getRawMany();
+  res.status(StatusCodes.OK).json(rows.map(withNumbers));
 };
 
-// [todo] 중복 코드 모듈화
+// 전체 프로젝트 조회 (메인 화면): 기본은 종료되지 않은 프로젝트, 최신순
+export const getAllProjects = (req: Request, res: Response) =>
+  list(req, res, { order: [['project.project_id', 'DESC']] });
 
-// 전체 프로젝트 조회 (메인 화면)
-export const getAllProjects = async (req: Request, res: Response) => {
-  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
-  const projectRepo = AppDataSource.getRepository(Project);
-
-  const query = projectRepo
-    .createQueryBuilder('project')
-    .select([
-      'project.projectId AS project_id',
-      'project.image_url AS image_url',
-      'project.title AS title',
-      'project.shortDescription AS short_description',
-      'project.goalAmount AS goal_amount',
-      'project.currentAmount AS current_amount',
-      'FLOOR((current_amount / NULLIF(goal_amount, 0))*100) AS achievement',
-    ])
-    .addSelect('DATEDIFF(project.end_date, NOW()) AS remaining_day');
-
-  if (limit) {
-    query.take(limit);
-  }
-
-  try {
-    const queryResult: ProjectType[] = await query.getRawMany();
-
-    if (queryResult.length === 0) {
-      return res.status(HttpStatusCode.Ok).json([]);
-    }
-
-    return res.status(HttpStatusCode.Ok).json(
-      queryResult.map((item) => ({
-        ...item,
-        achievement: Number(item.achievement),
-      })));
-  } catch (err) {
-    console.error(err);
-    return res.status(HttpStatusCode.InternalServerError).json({ message: '서버 문제가 발생했습니다.' });
-  }
-};
-
-// 최근 조회한 프로젝트 목록
+// 최근 조회한 프로젝트 목록 (입력한 순서 유지)
 export const getRecentlyViewedFundingList = async (req: Request, res: Response) => {
-  let projectIds = req.query.project_id;
-
-  if (!projectIds) {
-    return res.status(HttpStatusCode.Ok).json([]);
+  const projectIds = parseProjectIds(req.query.project_id);
+  if (projectIds.length === 0) {
+    res.status(StatusCodes.OK).json([]);
+    return;
   }
 
-  if (typeof projectIds === 'string') {
-    projectIds = [projectIds];
-  }
-
-  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
-  const projectRepo = AppDataSource.getRepository(Project);
-
-  const query = projectRepo
-    .createQueryBuilder('project')
+  const query = projects()
     .select([
       'project.projectId AS project_id',
       'project.image_url AS imageUrl',
@@ -79,182 +62,61 @@ export const getRecentlyViewedFundingList = async (req: Request, res: Response) 
       'project.shortDescription AS shortDescription',
       'project.goalAmount AS goalAmount',
       'project.currentAmount AS currentAmount',
-      'FLOOR((current_amount / NULLIF(goal_amount, 0))*100) AS achievement',
     ])
-    .addSelect('DATEDIFF(project.end_date, NOW()) AS remainingDay')
-    .where('project.projectId IN (:...projectIds)', { projectIds });
+    .addSelect('COALESCE(FLOOR(project.current_amount / NULLIF(project.goal_amount, 0) * 100), 0)', 'achievement')
+    .addSelect('GREATEST(DATEDIFF(project.end_date, CURDATE()), 0)', 'remainingDay')
+    .where('project.projectId IN (:...projectIds)', { projectIds })
+    // 조회한 순서(user-service가 보낸 순서)를 유지한다.
+    .orderBy('FIELD(project.project_id, :...projectIds)');
 
-  if (limit) {
-    query.take(limit);
-  }
-
-  try {
-    const queryResult: ProjectType[] = await query.getRawMany();
-
-    if (queryResult.length === 0) {
-      return res.status(HttpStatusCode.Ok).json([]);
-    }
-
-    return res.status(HttpStatusCode.Ok).json(
-      queryResult.map((item) => ({
-        ...item,
-        achievement: Number(item.achievement),
-      }))
-    );
-  } catch (err) {
-    console.error(err);
-    return res.status(HttpStatusCode.InternalServerError).json({ message: '서버 문제가 발생했습니다.' });
-  }
+  const { limit } = parsePaging(req.query, projectIds.length, 20);
+  const rows = await query.limit(limit).getRawMany();
+  res.status(StatusCodes.OK).json(
+    rows.map((row) => ({
+      ...row,
+      goalAmount: Number(row.goalAmount),
+      currentAmount: Number(row.currentAmount),
+      achievement: Number(row.achievement),
+      remainingDay: Number(row.remainingDay),
+    }))
+  );
 };
 
-// 마감 임박 프로젝트 목록
-export const getDeadlineFundingList = async (req: Request, res: Response) => {
-  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
-  const projectRepo = AppDataSource.getRepository(Project);
-
-  const query = projectRepo
-    .createQueryBuilder('project')
-    .select([
-      'project.projectId AS project_id',
-      'project.image_url AS image_url',
-      'project.title AS title',
-      'project.shortDescription AS short_description',
-      'project.goalAmount AS goal_amount',
-      'project.currentAmount AS current_amount',
-    ])
-    .addSelect('DATEDIFF(project.end_date, NOW()) AS remaining_day')
-    .orderBy('project.end_date', 'DESC');
-
-  if (limit) {
-    query.take(limit);
-  }
-
-  try {
-    const queryResult: ProjectType[] = await query.getRawMany();
-
-    if (queryResult.length === 0) {
-      return res.status(HttpStatusCode.Ok).json([]);
-    }
-
-    return res.status(HttpStatusCode.Ok).json(queryResult);
-  } catch (err) {
-    console.error(err);
-    return res.status(HttpStatusCode.InternalServerError).json({ message: '서버 문제가 발생했습니다.' });
-  }
-};
+// 마감 임박 프로젝트 목록: 진행 중인 프로젝트를 종료일이 가까운 순으로
+export const getDeadlineFundingList = (req: Request, res: Response) =>
+  list(req, res, {
+    defaultStatus: 'ongoing',
+    order: [
+      ['project.end_date', 'ASC'],
+      ['project.project_id', 'DESC'],
+    ],
+  });
 
 // 신규 프로젝트 목록
-export const getNewFundingList = async (req: Request, res: Response) => {
-  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
-  const projectRepo = AppDataSource.getRepository(Project);
+export const getNewFundingList = (req: Request, res: Response) =>
+  list(req, res, {
+    // 등록 후 지난 일수 (0, 1, 2 ...)
+    extra: (query) => query.addSelect('DATEDIFF(CURDATE(), DATE(project.created_at))', 'created_before'),
+    order: [
+      ['project.created_at', 'DESC'],
+      ['project.project_id', 'DESC'],
+    ],
+  });
 
-  const query = projectRepo
-    .createQueryBuilder('project')
-    .select([
-      'project.projectId AS project_id',
-      'project.image_url AS image_url',
-      'project.title AS title',
-      'project.shortDescription AS short_description',
-      'project.goalAmount AS goal_amount',
-      'project.currentAmount AS current_amount',
-    ])
-    .addSelect('DATEDIFF(project.created_at, NOW()) AS created_before')
-    .addSelect('DATEDIFF(project.end_date, NOW()) AS remaining_day')
-    .orderBy('project.created_at', 'DESC');
-
-  if (limit) {
-    query.take(limit);
-  }
-
-  try {
-    const queryResult: ProjectType[] = await query.getRawMany();
-
-    if (queryResult.length === 0) {
-      return res.status(HttpStatusCode.Ok).json([]);
-    }
-
-    return res.status(HttpStatusCode.Ok).json(queryResult);
-  } catch (err) {
-    console.error(err);
-    return res.status(HttpStatusCode.InternalServerError).json({ message: '서버 문제가 발생했습니다.' });
-  }
-};
-
-// 인기 프로젝트 목록
+// 인기 프로젝트 목록: 진행 중인 프로젝트를 좋아요 수 순으로 (limit 기본 8)
 export const getPopularFundingList = async (req: Request, res: Response) => {
-  const projectRepo = AppDataSource.getRepository(Project);
-  const query = projectRepo
-    .createQueryBuilder('project')
-    .leftJoin('project.likes', 'like')
-    .select([
-      'project.projectId AS project_id',
-      'project.image_url AS image_url',
-      'project.title AS title',
-      'project.shortDescription AS short_description',
-      'project.currentAmount AS current_amount',
-      'DATEDIFF(project.end_date, NOW()) AS remaining_day',
-    ])
-    .addSelect('FLOOR((project.currentAmount / project.goalAmount) * 100)', 'achievement')
-    .groupBy('project.projectId')
-    .where('end_date > NOW()')
-    .orderBy('COUNT(like.project_id)', 'DESC')
-    .limit(8);
+  const status = parseStatus(req.query.status, 'ongoing');
+  const { limit } = parsePaging(req.query, 8, 50);
 
-  try {
-    const queryResult = await query.getRawMany();
+  const query = listColumns(projects()).addSelect(LIKE_COUNT, 'like_count');
+  whereStatus(query, status);
 
-    if (queryResult.length == 0) {
-      return res.status(HttpStatusCode.Ok).json([]);
-    }
-
-    return res.status(HttpStatusCode.Ok).json(
-      queryResult.map((item) => ({
-        ...item,
-        achievement: Number(item.achievement),
-      })));
-  } catch (err) {
-    console.error(err);
-    return res.status(HttpStatusCode.InternalServerError).json({ message: '서버 문제가 발생했습니다.' });
-  }
+  const rows = await query.orderBy('like_count', 'DESC').addOrderBy('project.project_id', 'DESC').limit(limit).getRawMany();
+  res.status(StatusCodes.OK).json(rows.map(withNumbers));
 };
 
-// 카테고리별 프로젝트 목록
-export const getFundingListByCategoryId = async (req: Request, res: Response) => {
-  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
-  const categoryId = req.params.id;
-  const projectRepo = AppDataSource.getRepository(Project);
-
-  if (!categoryId) {
-    return res.status(HttpStatusCode.BadRequest).json({ message: '카테고리 ID를 입력해주세요.' });
-  }
-
-  const query = projectRepo
-    .createQueryBuilder('project')
-    .select([
-      'project.projectId AS project_id',
-      'project.image_url AS image_url',
-      'project.title AS title',
-      'project.shortDescription AS short_description',
-      'project.goalAmount AS goal_amount',
-      'project.currentAmount AS current_amount',
-    ])
-    .addSelect('DATEDIFF(project.end_date, NOW()) AS remaining_day')
-    .where('project.category_id = :categoryId', { categoryId: parseInt(categoryId) });
-
-  if (limit) {
-    query.take(limit);
-  }
-
-  try {
-    const queryResult: ProjectType[] = await query.getRawMany();
-
-    if (queryResult.length === 0) {
-      return res.status(HttpStatusCode.Ok).json([]);
-    }
-
-    return res.status(HttpStatusCode.Ok).json(queryResult);
-  } catch (err) {
-    console.error(err);
-    return res.status(HttpStatusCode.InternalServerError).json({ message: '서버 문제가 발생했습니다.' });
-  }
+// 카테고리별 프로젝트 목록 (:id 는 카테고리 ID)
+export const getFundingListByCategoryId = (req: Request, res: Response) => {
+  const categoryId = requireId(req.params.id, '카테고리 ID를 확인해주세요.');
+  return list(req, res, { categoryId, order: [['project.project_id', 'DESC']] });
 };

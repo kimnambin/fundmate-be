@@ -1,103 +1,62 @@
 import { Request, Response } from 'express';
+import { StatusCodes } from 'http-status-codes';
+import { HttpError, getUser } from '@shared/config';
+import { Category, OptionData, Project } from '@shared/entities';
 import { AppDataSource } from '../data-source';
-import { Project, OptionData } from '@shared/entities';
-import { HttpStatusCode } from 'axios';
-import { requestBodyValidation } from '../modules/RequestBodyValidation';
 import { addLikedStatusToQuery } from '../modules/addLikedStatus';
+import { LIKE_COUNT, SPONSOR_COUNT } from '../modules/projectQuery';
+import { parseProjectBody, requireId, todayKst } from '../modules/validation';
 
-// 프로젝트 생성
+// 프로젝트 생성 (프로젝트 + 옵션을 한 트랜잭션으로)
 export const createFundingAndOption = async (req: Request, res: Response) => {
-  const { userId } = res.locals.user;
+  const { userId } = getUser(res);
+  const input = parseProjectBody(req.body);
 
-  const {
-    image_url: imageUrl,
-    title,
-    goal_amount: goalAmount,
-    start_date: startDate,
-    end_date: endDate,
-    delivery_date: deliveryDate,
-    short_description: shortDescription,
-    description,
-    category_id: category,
-    options,
-    gender,
-    age_group: ageGroup,
-  } = req.body;
-
-  const values = [
-    imageUrl,
-    userId,
-    category,
-    title,
-    goalAmount,
-    startDate,
-    endDate,
-    deliveryDate,
-    shortDescription,
-    description,
-    options,
-    gender,
-    ageGroup,
-  ];
-
-  if (!requestBodyValidation(values)) {
-    return res.status(HttpStatusCode.BadRequest).json({ message: '올바른 정보를 입력하세요.' });
-  }
-
+  // 연결과 트랜잭션 시작도 try 안에서 처리해서, 실패해도 예외가 밖으로 새거나 연결이 남지 않게 한다.
   const queryRunner = AppDataSource.createQueryRunner();
-  const optionRepo = queryRunner.manager.getRepository(OptionData);
-  const fundingRepo = queryRunner.manager.getRepository(Project);
-
-  await queryRunner.connect();
-  await queryRunner.startTransaction();
-
   try {
-    const newFunding: Project = fundingRepo.create({
-      imageUrl: imageUrl,
-      user: { userId: userId },
-      category: { categoryId: category },
-      goalAmount,
-      currentAmount: 0,
-      title,
-      startDate,
-      endDate,
-      deliveryDate,
-      shortDescription,
-      description,
-      isActive: new Date(startDate) <= new Date() ? true : false,
-      gender,
-      ageGroup,
-    });
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    const fundingResult = await fundingRepo.save(newFunding);
-
-    if(!fundingResult.projectId) {
-      throw new Error("프로젝트 생성 실패");
+    if (!(await queryRunner.manager.exists(Category, { where: { categoryId: input.categoryId } }))) {
+      throw new HttpError(StatusCodes.BAD_REQUEST, '존재하지 않는 카테고리입니다.');
     }
 
-    for (const option of options) {
-      const newOption: OptionData = optionRepo.create({
-        title: option.title,
-        description: option.description,
-        price: option.price,
-        project: { projectId: fundingResult.projectId },
-      });
+    const project = await queryRunner.manager.save(
+      queryRunner.manager.create(Project, {
+        imageUrl: input.imageUrl,
+        user: { userId },
+        category: { categoryId: input.categoryId },
+        goalAmount: input.goalAmount,
+        currentAmount: 0,
+        title: input.title,
+        startDate: input.startDate as unknown as Date,
+        endDate: input.endDate as unknown as Date,
+        deliveryDate: input.deliveryDate as unknown as Date,
+        shortDescription: input.shortDescription,
+        description: input.description,
+        // 진행 상태는 조회 시 날짜로 계산한다. 컬럼은 기존 값과의 호환을 위해 채워 둔다.
+        isActive: input.startDate <= todayKst(),
+        gender: input.gender,
+        ageGroup: input.ageGroup,
+      })
+    );
 
-      const savedOption = await optionRepo.save(newOption);
-
-      if (!savedOption.optionId) {
-        throw new Error("옵션 생성 실패");
-      }
+    if (!project.projectId) {
+      throw new Error('프로젝트 생성 실패');
     }
-      
-    
+
+    await queryRunner.manager.save(
+      input.options.map((option) =>
+        queryRunner.manager.create(OptionData, { ...option, project: { projectId: project.projectId } })
+      )
+    );
+
     await queryRunner.commitTransaction();
-    return res.status(HttpStatusCode.Created).json({project_id: fundingResult.projectId});
-    
+    res.status(StatusCodes.CREATED).json({ project_id: project.projectId });
   } catch (err) {
-    console.error(err);
-    await queryRunner.rollbackTransaction();
-    return res.status(HttpStatusCode.InternalServerError).json({ message: '프로젝트 & 옵션 생성을 실패하였습니다.' });
+    if (queryRunner.isTransactionActive) await queryRunner.rollbackTransaction();
+    throw err;
   } finally {
     await queryRunner.release();
   }
@@ -105,93 +64,70 @@ export const createFundingAndOption = async (req: Request, res: Response) => {
 
 // 프로젝트 상세 조회
 export const getFundingDetail = async (req: Request, res: Response) => {
-  const projectDetailId = req.params.id;
-  const userId = res.locals.user?.userId;
+  const projectId = requireId(req.params.id, '잘못된 프로젝트 ID 값입니다.');
+  const userId: number | undefined = res.locals.user?.userId;
 
-  if (!projectDetailId) {
-    return res.status(HttpStatusCode.BadRequest).json({ message: '잘못된 프로젝트 ID 값입니다.' });
-  }
+  // 후원자/좋아요 수는 서브쿼리로 세므로 조인 곱셈이 없고, 프로젝트가 없으면 행이 없다.
+  const projectQuery = addLikedStatusToQuery(
+    userId,
+    AppDataSource.getRepository(Project)
+      .createQueryBuilder('project')
+      .leftJoin('project.user', 'user')
+      .select([
+        'project.projectId AS project_id',
+        'project.image_url AS project_image_url',
+        'project.title AS title',
+        'project.current_amount AS current_price',
+        'GREATEST(DATEDIFF(project.end_date, CURDATE()), 0) AS remaining_day',
+        'project.goalAmount AS goal_amount',
+        'DATE(project.start_date) AS start_date',
+        'DATE(project.end_date) AS end_date',
+        'DATE(project.delivery_date) AS delivery_date',
+        'project.description AS description',
+        'user.image_id AS user_image_id',
+        'user.nickname AS nickname',
+        'user.contents AS content',
+        'DATE_ADD(project.end_date, INTERVAL 1 DAY) AS payment_date',
+      ])
+      .addSelect(SPONSOR_COUNT, 'sponsor')
+      .addSelect(LIKE_COUNT, 'likes')
+      .where('project.projectId = :projectId', { projectId })
+  );
 
-  const projectRepo = AppDataSource.getRepository(Project);
-  const optionRepo = AppDataSource.getRepository(OptionData);
-
-  let projectQuery = projectRepo
-    .createQueryBuilder('project')
-    .leftJoin('project.user', 'user')
-    .leftJoin('project.paymentSchedule', 'schedule')
-    .leftJoin('project.likes', 'like')
-    .select([
-      'project.projectId AS project_id',
-      'project.image_url AS project_image_url',
-      'project.title AS title',
-      'project.current_amount AS current_price',
-      'DATEDIFF(project.end_date, NOW()) AS remaining_day',
-      'project.goalAmount AS goal_amount',
-      'DATE(CONVERT_TZ(project.start_date, "+00:00", "+09:00")) AS start_date',
-      'DATE(CONVERT_TZ(project.end_date, "+00:00", "+09:00")) AS end_date',
-      'DATE(CONVERT_TZ(project.delivery_date, "+00:00", "+09:00")) AS delivery_date',
-      'project.description AS description',
-
-      'user.image_id AS user_image_id',
-      'user.nickname AS nickname',
-      'user.contents AS content',
-
-      'DATE_ADD(project.end_date, INTERVAL 1 DAY) AS payment_date',
-      'COUNT(schedule.payment_info_id) AS sponsor',
-
-      'COUNT(DISTINCT like.userId) AS likes',
-    ])
-    .where('project.projectId = :projectId', { projectId: projectDetailId });
-
-    projectQuery = addLikedStatusToQuery(userId, projectQuery);
-
-  const optionQuery = optionRepo
+  const optionQuery = AppDataSource.getRepository(OptionData)
     .createQueryBuilder('option')
     .select(['option.title AS title', 'option.description AS description', 'option.price AS price'])
-    .where('option.project_id = :projectId', { projectId: projectDetailId });
+    .where('option.project_id = :projectId', { projectId })
+    .orderBy('option.option_id', 'ASC');
 
-  try {
-    const [projectQueryResult, optionQueryResult] = await Promise.all([
-      projectQuery.getRawOne(),
-      optionQuery.getRawMany(),
-    ]);
+  const [projectRow, optionRows] = await Promise.all([projectQuery.getRawOne(), optionQuery.getRawMany()]);
 
-    if (projectQueryResult && optionQueryResult) {
-      const project = {
-        project_id: projectQueryResult.project_id,
-        image_url: projectQueryResult.project_image_url,
-        title: projectQueryResult.title,
-        current_price: projectQueryResult.current_price,
-        remaining_day: projectQueryResult.remaining_day,
-        goal_amount: projectQueryResult.goal_amount,
-        start_date: projectQueryResult.start_date,
-        end_date: projectQueryResult.end_date,
-        delivery_date: projectQueryResult.delivery_date,
-        description: projectQueryResult.description,
-        payment_date: projectQueryResult.payment_date,
-        sponsor: Number(projectQueryResult.sponsor),
-        likes: Number(projectQueryResult.likes),
-liked: !!Number(projectQueryResult.liked),
-      };
-
-      const users = {
-        image_id: projectQueryResult.user_image_id,
-        nickname: projectQueryResult.nickname,
-        content: projectQueryResult.content,
-      };
-
-      const options = optionQueryResult.map((option) => ({
-        title: option.title,
-        description: option.description,
-        price: option.price,
-      }));
-
-      return res.status(HttpStatusCode.Ok).json({ project, users, options });
-    } else {
-      return res.status(HttpStatusCode.NotFound).json({ message: '프로젝트 정보를 찾을 수 없습니다.' });
-    }
-  } catch (err) {
-    console.error(err);
-    return res.status(HttpStatusCode.InternalServerError).json({ message: '서버 문제가 발생했습니다.' });
+  if (!projectRow) {
+    throw new HttpError(StatusCodes.NOT_FOUND, '프로젝트 정보를 찾을 수 없습니다.');
   }
+
+  res.status(StatusCodes.OK).json({
+    project: {
+      project_id: projectRow.project_id,
+      image_url: projectRow.project_image_url,
+      title: projectRow.title,
+      current_price: projectRow.current_price,
+      remaining_day: Number(projectRow.remaining_day),
+      goal_amount: projectRow.goal_amount,
+      start_date: projectRow.start_date,
+      end_date: projectRow.end_date,
+      delivery_date: projectRow.delivery_date,
+      description: projectRow.description,
+      payment_date: projectRow.payment_date,
+      sponsor: Number(projectRow.sponsor),
+      likes: Number(projectRow.likes),
+      liked: !!Number(projectRow.liked),
+    },
+    users: {
+      image_id: projectRow.user_image_id,
+      nickname: projectRow.nickname,
+      content: projectRow.content,
+    },
+    options: optionRows.map((option) => ({ title: option.title, description: option.description, price: option.price })),
+  });
 };

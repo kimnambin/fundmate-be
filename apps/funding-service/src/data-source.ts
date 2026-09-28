@@ -14,7 +14,8 @@ export const AppDataSource = new DataSource({
   entities: fundingEntities,
   migrationsRun: false,
   synchronize: false,
-  logging: true,
+  // 프로젝트 설명 같은 긴 본문이 파라미터로 남으므로 오류/경고만 기록한다.
+  logging: process.env.DB_LOGGING === 'true' ? true : ['error', 'warn'],
   timezone: '+09:00',
   charset: 'utf8mb4',
 });
