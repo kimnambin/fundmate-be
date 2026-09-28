@@ -3,39 +3,42 @@
   "info": {
     "title": "Public Service API",
     "version": "1.0.0",
-    "description": "다양한 조건에 따라 공개 데이터를 조회하는 마이크로서비스입니다. 통계 데이터 및 키워드 기반 데이터 조회를 지원합니다."
+    "description": "통계청 SGIS OpenAPI의 연도별(2019~2023) 인구·가구·주택 통계를 조회합니다. 로그인이 필요 없으며, 결과는 서버에서 24시간 캐시됩니다."
   },
   "servers": [
     {
-      "url": "https://fundmate.store/api/public",
+      "url": "https://fundmate.store/api",
       "description": "공공데이터 서버"
     }
   ],
   "tags": [
     {
       "name": "공개 데이터 조회 (Public Data Retrieval)",
-      "description": "다양한 필터링 조건 및 키워드를 사용하여 공개 데이터를 조회하는 API"
+      "description": "SGIS 통계 조회 API"
     }
   ],
   "paths": {
-    "public/option": {
+    "/datas/option": {
       "post": {
-        "tags": ["공개 데이터 조회 (Public Data Retrieval)"],
-        "summary": "옵션 기반 공개 데이터 조회",
-        "description": "지정된 옵션(예: 카테고리, 연령대, 성별, 가구 유형)에 따라 공개 데이터를 조회합니다.",
+        "tags": [
+          "공개 데이터 조회 (Public Data Retrieval)"
+        ],
+        "summary": "연령대/성별/지역별 인구 통계 조회",
+        "description": "연령대, 성별, 지역 조건의 인구 통계를 연도별(2019~2023)로 조회합니다. 값은 SGIS 코드를 그대로 사용합니다. 응답은 서버에서 24시간 캐시됩니다.",
         "requestBody": {
-          "description": "조회할 옵션 정보",
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/OptionDataRequest" },
+              "schema": {
+                "$ref": "#/components/schemas/OptionDataRequest"
+              },
               "examples": {
                 "sample": {
-                  "summary": "옵션 데이터 요청 예시",
+                  "summary": "20대 여성, 서울",
                   "value": {
-                    "category": "IT/가전",
-                    "age_group": "20대",
-                    "gender": "female"
+                    "age_group": 32,
+                    "gender": 2,
+                    "area": 11
                   }
                 }
               }
@@ -44,19 +47,27 @@
         },
         "responses": {
           "200": {
-            "description": "데이터 조회 성공",
+            "description": "조회 성공",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/PublicDataResponse" },
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/YearResult"
+                  }
+                },
                 "examples": {
                   "sample": {
-                    "summary": "옵션 데이터 응답 예시",
+                    "summary": "응답 예시",
                     "value": [
                       {
-                        "id": 1,
-                        "title": "20대 여성 IT/가전 관심도",
-                        "value": "높음",
-                        "source": "설문조사"
+                        "year": 2019,
+                        "result": [
+                          {
+                            "adm_cd": "11",
+                            "population": "1234567"
+                          }
+                        ]
                       }
                     ]
                   }
@@ -64,27 +75,35 @@
               }
             }
           },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       }
     },
-    "public/keyword": {
+    "/datas/keyword": {
       "post": {
-        "tags": ["공개 데이터 조회 (Public Data Retrieval)"],
-        "summary": "키워드 기반 공개 데이터 조회",
-        "description": "지정된 키워드를 포함하는 공개 데이터를 조회합니다. (예: 특허 정보, 뉴스 기사 등)",
+        "tags": [
+          "공개 데이터 조회 (Public Data Retrieval)"
+        ],
+        "summary": "인구/가구/주택 통계 조회",
+        "description": "선택한 항목(people, household, house)의 전국 통계를 연도별로 조회합니다. 하나 이상을 true로 보내야 하며, 보내지 않은 항목은 선택하지 않은 것으로 봅니다. 응답에는 선택한 항목만 포함됩니다.",
         "requestBody": {
-          "description": "조회할 키워드 정보",
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/KeywordDataRequest" },
+              "schema": {
+                "$ref": "#/components/schemas/KeywordDataRequest"
+              },
               "examples": {
                 "sample": {
-                  "summary": "키워드 데이터 요청 예시",
+                  "summary": "인구와 가구 선택",
                   "value": {
-                    "keyword": "AI 특허"
+                    "people": true,
+                    "household": true
                   }
                 }
               }
@@ -93,28 +112,44 @@
         },
         "responses": {
           "200": {
-            "description": "데이터 조회 성공",
+            "description": "조회 성공",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/PublicDataResponse" },
+                "schema": {
+                  "$ref": "#/components/schemas/KeywordDataResponse"
+                },
                 "examples": {
                   "sample": {
-                    "summary": "키워드 데이터 응답 예시",
-                    "value": [
-                      {
-                        "id": 101,
-                        "title": "AI 기반 이미지 분석 특허",
-                        "value": "2023년 등록",
-                        "source": "특허청"
-                      }
-                    ]
+                    "summary": "응답 예시",
+                    "value": {
+                      "people": [
+                        {
+                          "year": 2019,
+                          "result": [
+                            {}
+                          ]
+                        }
+                      ],
+                      "household": [
+                        {
+                          "year": 2019,
+                          "result": [
+                            {}
+                          ]
+                        }
+                      ]
+                    }
                   }
                 }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       }
     }
@@ -124,35 +159,89 @@
       "OptionDataRequest": {
         "type": "object",
         "title": "옵션 데이터 요청",
-        "description": "옵션 기반 데이터 조회를 위한 요청 본문입니다.",
+        "required": [
+          "age_group",
+          "gender"
+        ],
         "properties": {
-          "category": { "type": "string", "example": "IT/가전", "description": "조회할 통계의 카테고리" },
-          "age_group": { "type": "string", "example": "20대", "description": "조회할 통계의 연령대" },
-          "gender": { "type": "string", "enum": ["male", "female", "any"], "example": "female", "description": "조회할 통계의 성별" },
-          "household_type": { "type": "string", "example": "1인 가구", "description": "조회할 통계의 가구 유형" }
+          "age_group": {
+            "type": "integer",
+            "example": 32,
+            "description": "SGIS 연령대 코드(age_type). 숫자 문자열도 허용"
+          },
+          "gender": {
+            "type": "integer",
+            "enum": [
+              0,
+              1,
+              2
+            ],
+            "example": 2,
+            "description": "SGIS 성별 코드. 0 전체, 1 남자, 2 여자"
+          },
+          "area": {
+            "type": "integer",
+            "example": 11,
+            "description": "SGIS 행정구역 코드(adm_cd). 생략하거나 0이면 전국"
+          }
         }
       },
       "KeywordDataRequest": {
         "type": "object",
         "title": "키워드 데이터 요청",
-        "description": "키워드 기반 데이터 조회를 위한 요청 본문입니다.",
-        "required": ["keyword"],
+        "description": "하나 이상 true여야 합니다.",
         "properties": {
-          "keyword": { "type": "string", "example": "AI 기술", "description": "검색할 키워드" }
+          "people": {
+            "type": "boolean",
+            "example": true
+          },
+          "household": {
+            "type": "boolean",
+            "example": false
+          },
+          "house": {
+            "type": "boolean",
+            "example": false
+          }
         }
       },
-      "PublicDataResponse": {
-        "type": "array",
-        "title": "공개 데이터 응답",
-        "description": "조회된 공개 데이터 목록입니다. 각 항목의 구조는 조회 방식에 따라 달라질 수 있습니다.",
-        "items": {
-          "type": "object",
-          "properties": {
-            "id": { "type": "integer", "description": "데이터 고유 ID", "example": 1 },
-            "title": { "type": "string", "description": "데이터 제목", "example": "데이터 제목" },
-            "value": { "type": "string", "description": "데이터 값 또는 요약", "example": "데이터 값" },
-            "source": { "type": "string", "description": "데이터 출처", "example": "출처" },
-            "collected_at": { "type": "string", "format": "date-time", "description": "데이터 수집 일시", "example": "2025-07-15T10:00:00Z" }
+      "YearResult": {
+        "type": "object",
+        "properties": {
+          "year": {
+            "type": "integer",
+            "example": 2023
+          },
+          "result": {
+            "description": "SGIS 응답의 result. 결과가 없으면 빈 배열",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      },
+      "KeywordDataResponse": {
+        "type": "object",
+        "properties": {
+          "people": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/YearResult"
+            }
+          },
+          "household": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/YearResult"
+            }
+          },
+          "house": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/YearResult"
+            }
           }
         }
       },
@@ -160,32 +249,13 @@
         "$ref": "./auths.json#/components/schemas/ErrorResponse"
       }
     },
-    "securitySchemes": {
-      "bearerAuth": {
-        "$ref": "./auths.json#/components/securitySchemes/bearerAuth"
-      }
-    },
     "responses": {
-      "BadRequest": { "$ref": "./auths.json#/components/responses/BadRequest" },
-      "Unauthorized": { "$ref": "./auths.json#/components/responses/Unauthorized" },
-      "NotFound": {
-        "description": "요청한 리소스를 찾을 수 없습니다.",
-        "content": {
-          "application/json": {
-            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
-            "examples": {
-              "sample": {
-                "summary": "데이터 없음",
-                "value": {
-                  "code": "DATA_NOT_FOUND",
-                  "message": "요청한 조건에 해당하는 데이터를 찾을 수 없습니다."
-                }
-              }
-            }
-          }
-        }
+      "BadRequest": {
+        "$ref": "./auths.json#/components/responses/BadRequest"
       },
-      "InternalError": { "$ref": "./auths.json#/components/responses/InternalError" }
+      "InternalError": {
+        "$ref": "./auths.json#/components/responses/InternalError"
+      }
     }
   }
 }
