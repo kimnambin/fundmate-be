@@ -13,6 +13,7 @@ export const AppDataSource = new DataSource({
   entities: paymentEntities,
   migrationsRun: false,
   synchronize: false,
-  logging: true,
+  // 결제 수단(details), 배송지(address)가 쿼리 파라미터로 로그에 남지 않도록 오류/경고만 기록한다.
+  logging: process.env.DB_LOGGING === 'true' ? true : ['error', 'warn'],
   timezone: '+09:00',
 });

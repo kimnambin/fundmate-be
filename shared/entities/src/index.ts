@@ -24,4 +24,4 @@ export const authEntities = [Age, Category, EmailVerification, Image, InterestCa
 export const fundingEntities = [Project, OptionData, User, Age, Image, Category, Like, Comment, PaymentSchedule, PaymentInfo];
 export const userEntities = [Age, Category, Image, InterestCategory, User, Follow, Token];
 export const interactionEntities = [User, Project, Like, Age, Image, Category, OptionData, Comment, PaymentSchedule, PaymentInfo];
-export const paymentEntities = [PaymentHistory, PaymentSchedule, PaymentInfo, ...fundingEntities];
+export const paymentEntities = [...new Set([PaymentHistory, PaymentInfo, PaymentSchedule, ...fundingEntities])];

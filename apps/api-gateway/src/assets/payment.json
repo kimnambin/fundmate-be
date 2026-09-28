@@ -7,16 +7,8 @@
   },
   "servers": [
     {
-      "url": "https://fundmate.store/api/payment",
-      "description": "결제 정보 서버"
-    },
-    {
-      "url": "https://fundmate.store/api/reservations",
-      "description": "후원 프로젝트 서버"
-    },
-    {
-      "url": "https://fundmate.store/api/statistics",
-      "description": "펀딩 통계 서버"
+      "url": "https://fundmate.store/api",
+      "description": "API 게이트웨이"
     }
   ],
   "tags": [
@@ -36,15 +28,19 @@
   "paths": {
     "/payments": {
       "post": {
-        "tags": ["결제 (Payment)"],
+        "tags": [
+          "결제 (Payment)"
+        ],
         "summary": "결제 정보 등록",
-        "description": "새로운 결제 정보를 시스템에 등록합니다.",
+        "description": "새로운 결제 정보를 시스템에 등록합니다. 결제 수단 상세(details)는 type이 card면 expMonth/expYear, vbank면 owner만 받습니다. 카드 번호 전체나 CVC는 저장하지 않으며 보내면 400입니다. token은 받지도 저장하지도 않습니다.",
         "requestBody": {
           "description": "등록할 결제 정보",
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/PaymentInfoInput" },
+              "schema": {
+                "$ref": "#/components/schemas/PaymentInfoInput"
+              },
               "examples": {
                 "sample": {
                   "summary": "결제 정보 등록 요청 예시",
@@ -63,16 +59,24 @@
             "description": "결제 정보 등록 성공",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/PaymentInfoResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentInfoResponse"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       },
       "get": {
-        "tags": ["결제 (Payment)"],
+        "tags": [
+          "결제 (Payment)"
+        ],
         "summary": "모든 결제 정보 조회",
         "description": "시스템에 등록된 모든 결제 정보를 조회합니다.",
         "responses": {
@@ -82,7 +86,9 @@
               "application/json": {
                 "schema": {
                   "type": "array",
-                  "items": { "$ref": "#/components/schemas/PaymentInfoResponse" }
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentInfoResponse"
+                  }
                 },
                 "examples": {
                   "sample": {
@@ -108,7 +114,9 @@
               }
             }
           },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       }
     },
@@ -118,12 +126,17 @@
           "name": "id",
           "in": "path",
           "required": true,
-          "schema": { "type": "integer", "example": 42 },
+          "schema": {
+            "type": "integer",
+            "example": 42
+          },
           "description": "조회 또는 삭제할 결제 정보의 고유 ID"
         }
       ],
       "get": {
-        "tags": ["결제 (Payment)"],
+        "tags": [
+          "결제 (Payment)"
+        ],
         "summary": "특정 결제 정보 조회",
         "description": "지정된 ID에 해당하는 결제 정보를 조회합니다.",
         "responses": {
@@ -131,30 +144,44 @@
             "description": "결제 정보 조회 성공",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/PaymentInfoResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentInfoResponse"
+                }
               }
             }
           },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       },
       "delete": {
-        "tags": ["결제 (Payment)"],
+        "tags": [
+          "결제 (Payment)"
+        ],
         "summary": "결제 정보 삭제",
-        "description": "지정된 ID에 해당하는 결제 정보를 시스템에서 삭제합니다.",
+        "description": "지정된 ID에 해당하는 결제 정보를 시스템에서 삭제합니다. 예약에 연결된 결제 수단은 삭제 대신 비활성화되어 목록에서 사라집니다.",
         "responses": {
           "204": {
             "description": "결제 정보 삭제 성공. 응답 본문은 없습니다."
           },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       }
     },
     "/statistics/count": {
       "get": {
-        "tags": ["통계 (Statistics)"],
+        "tags": [
+          "통계 (Statistics)"
+        ],
         "summary": "펀딩 전체 개수 조회",
         "description": "현재 진행 중이거나 완료된 모든 펀딩 프로젝트의 총 개수를 조회합니다.",
         "responses": {
@@ -162,96 +189,179 @@
             "description": "펀딩 개수 조회 성공",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/CountResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/CountResponse"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       }
     },
     "/statistics/history": {
       "get": {
-        "tags": ["통계 (Statistics)"],
+        "tags": [
+          "통계 (Statistics)"
+        ],
         "summary": "결제 내역 리스트 조회",
-        "description": "시스템 내 모든 결제 내역을 페이지네이션과 함께 조회합니다.",
+        "description": "시스템 내 모든 결제 내역을 페이지네이션과 함께 조회합니다. page, limit(최대 100)으로 SQL에서 페이지를 자릅니다. 후원자 관점(내가 후원한 내역)입니다.",
         "parameters": [
-          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1, "description": "페이지 번호" } },
-          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10, "description": "한 페이지당 항목 수" } }
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "description": "페이지 번호"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "description": "한 페이지당 항목 수"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "결제 내역 리스트 조회 성공",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/HistoryResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryResponse"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       }
     },
     "/statistics/summary": {
       "get": {
-        "tags": ["통계 (Statistics)"],
+        "tags": [
+          "통계 (Statistics)"
+        ],
         "summary": "총 모금액 및 후원자수 조회",
-        "description": "특정 기간 동안의 총 모금액과 총 후원자 수를 조회합니다.",
+        "description": "특정 기간 동안의 총 모금액과 총 후원자 수를 조회합니다. 기간은 startDate와 endDate(YYYY-MM-DD)를 함께 보내야 하며 종료일 당일을 포함합니다(KST). 후원자 관점(내가 후원한 내역)의 집계입니다. period 응답이 있을 때 totalcount(기존 키)와 totalCount를 모두 내려줍니다.",
         "parameters": [
-          { "name": "startDate", "in": "query", "schema": { "type": "string", "format": "date", "example": "2025-01-01" }, "description": "조회 시작일 (YYYY-MM-DD)" },
-          { "name": "endDate", "in": "query", "schema": { "type": "string", "format": "date", "example": "2025-12-31" }, "description": "조회 종료일 (YYYY-MM-DD)" }
+          {
+            "name": "startDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "example": "2025-01-01"
+            },
+            "description": "조회 시작일 (YYYY-MM-DD)"
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "example": "2025-12-31"
+            },
+            "description": "조회 종료일 (YYYY-MM-DD)"
+          }
         ],
         "responses": {
           "200": {
             "description": "총 모금액 및 후원자수 조회 성공",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/SummaryResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/SummaryResponse"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       }
     },
     "/statistics/graph": {
       "get": {
-        "tags": ["통계 (Statistics)"],
+        "tags": [
+          "통계 (Statistics)"
+        ],
         "summary": "월별 후원자수·금액 그래프용 데이터 조회",
-        "description": "특정 연월에 대한 월별 후원자 수와 모금액 데이터를 그래프 형태로 시각화하기 위한 데이터를 조회합니다.",
+        "description": "특정 연월에 대한 월별 후원자 수와 모금액 데이터를 그래프 형태로 시각화하기 위한 데이터를 조회합니다. 메이커 관점(내 프로젝트로 들어온 후원)입니다. 월 경계는 한국 시간 기준이며 count는 그날의 후원자 수입니다.",
         "parameters": [
-          { "name": "target", "in": "query", "schema": { "type": "string", "pattern": "^\\d{4}-(0[1-9]|1[0-2])$", "example": "2025-07" }, "description": "조회할 연월 (YYYY-MM)" }
+          {
+            "name": "target",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+              "example": "2025-07"
+            },
+            "description": "조회할 연월 (YYYY-MM)"
+          }
         ],
         "responses": {
           "200": {
             "description": "월별 통계 데이터 조회 성공",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/GraphResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/GraphResponse"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       }
     },
     "/reservations": {
       "get": {
-        "tags": ["펀딩 결제 및 예약 (Reservations & Payments)"],
+        "tags": [
+          "펀딩 결제 및 예약 (Reservations & Payments)"
+        ],
         "summary": "펀딩 결제 및 예약 전체 조회",
-        "description": "로그인한 사용자의 모든 펀딩 결제 및 예약 내역을 조회합니다.",
-        "security": [{ "bearerAuth": [] }],
+        "description": "로그인한 사용자의 모든 펀딩 결제 및 예약 내역을 조회합니다. 예약이 없으면 404가 아니라 200과 빈 목록({ data: [], count: 0 })입니다.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "펀딩 결제 및 예약 내역 조회 성공",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ReservationListResponse" },
+                "schema": {
+                  "$ref": "#/components/schemas/ReservationListResponse"
+                },
                 "examples": {
                   "sample": {
                     "summary": "예시 응답",
@@ -274,35 +384,51 @@
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "404": {
             "description": "예약된 정보가 없을 때",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
                 "examples": {
                   "no_reservation": {
                     "summary": "예약 정보 없음",
-                    "value": { "message": "예약된 정보가 없습니다." }
+                    "value": {
+                      "message": "예약된 정보가 없습니다."
+                    }
                   }
                 }
               }
             }
           },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       },
       "post": {
-        "tags": ["펀딩 결제 및 예약 (Reservations & Payments)"],
+        "tags": [
+          "펀딩 결제 및 예약 (Reservations & Payments)"
+        ],
         "summary": "펀딩 결제 및 예약 등록",
-        "description": "새로운 펀딩 결제 예약을 등록합니다.",
-        "security": [{ "bearerAuth": [] }],
+        "description": "새로운 펀딩 결제 예약을 등록합니다. 금액은 서버가 계산합니다: totalAmount = 옵션 가격(DB) + donateAmount + amount. rewardAmount / totalAmount를 보내면 서버 계산값과 대조만 하고 다르면 400입니다. 모든 금액은 0 이상의 정수입니다. 결제 예정일(scheduleDate)은 서버가 프로젝트 종료일 다음 날 0시(KST)로 정하므로 보내도 무시합니다. 진행 중인 프로젝트에만, 내 결제 수단으로, 자기 프로젝트가 아닌 곳에, 프로젝트당 한 번 예약할 수 있습니다(중복은 409).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "description": "펀딩 결제 및 예약 등록 요청 본문",
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/ReservationCreateRequest" },
+              "schema": {
+                "$ref": "#/components/schemas/ReservationCreateRequest"
+              },
               "examples": {
                 "sample": {
                   "summary": "예약 등록 요청 예시",
@@ -328,37 +454,57 @@
             "description": "펀딩 결제 및 예약 등록 성공",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/InsertedIdResponse" },
+                "schema": {
+                  "$ref": "#/components/schemas/InsertedIdResponse"
+                },
                 "examples": {
                   "sample": {
                     "summary": "성공 응답 예시",
-                    "value": { "insertedId": 23 }
+                    "value": {
+                      "insertedId": 23
+                    }
                   }
                 }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       }
     },
     "/reservations/{id}": {
       "parameters": [
-        { "$ref": "#/components/parameters/reservationId" }
+        {
+          "$ref": "#/components/parameters/reservationId"
+        }
       ],
       "get": {
-        "tags": ["펀딩 결제 및 예약 (Reservations & Payments)"],
+        "tags": [
+          "펀딩 결제 및 예약 (Reservations & Payments)"
+        ],
         "summary": "특정 펀딩 결제 및 예약 조회",
         "description": "지정된 ID에 해당하는 펀딩 결제 및 예약 정보를 상세 조회합니다.",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "펀딩 결제 및 예약 정보 조회 성공",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ReservationDetail" },
+                "schema": {
+                  "$ref": "#/components/schemas/ReservationDetail"
+                },
                 "examples": {
                   "sample": {
                     "summary": "예시 응답",
@@ -388,22 +534,36 @@
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       },
       "patch": {
-        "tags": ["펀딩 결제 및 예약 (Reservations & Payments)"],
+        "tags": [
+          "펀딩 결제 및 예약 (Reservations & Payments)"
+        ],
         "summary": "펀딩 결제 및 예약 정보 수정",
-        "description": "지정된 ID에 해당하는 펀딩 결제 및 예약 정보를 부분적으로 수정합니다. 결제 예정일 하루 전에는 수정할 수 없습니다.",
-        "security": [{ "bearerAuth": [] }],
+        "description": "지정된 ID에 해당하는 펀딩 결제 및 예약 정보를 부분적으로 수정합니다. 결제 예정일 하루 전에는 수정할 수 없습니다. 리워드(rewardId, null이면 제거), 추가 후원금(donateAmount), 배송지를 수정하며 어떤 필드를 바꿔도 총액을 다시 계산합니다. 결제 예정일 하루 전부터는 수정할 수 없습니다(403).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "description": "펀딩 결제 및 예약 정보 수정 요청 본문",
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/ReservationUpdateRequest" },
+              "schema": {
+                "$ref": "#/components/schemas/ReservationUpdateRequest"
+              },
               "examples": {
                 "sample": {
                   "summary": "예약 정보 수정 요청 예시",
@@ -425,63 +585,101 @@
             "description": "펀딩 정보 수정 성공",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/MessageResponse" },
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
                 "examples": {
                   "sample": {
                     "summary": "성공 응답 예시",
-                    "value": { "message": "펀딩 정보가 정상적으로 수정되었습니다." }
+                    "value": {
+                      "message": "펀딩 정보가 정상적으로 수정되었습니다."
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       },
       "delete": {
-        "tags": ["펀딩 결제 및 예약 (Reservations & Payments)"],
+        "tags": [
+          "펀딩 결제 및 예약 (Reservations & Payments)"
+        ],
         "summary": "펀딩 결제 예약 취소",
-        "description": "지정된 ID에 해당하는 펀딩 결제 예약을 취소합니다.",
-        "security": [{ "bearerAuth": [] }],
+        "description": "지정된 ID에 해당하는 펀딩 결제 예약을 취소합니다. 이미 결제가 실행된 예약이나 종료된 프로젝트의 예약은 취소할 수 없습니다(409).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "예약 취소 성공",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/MessageResponse" },
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
                 "examples": {
                   "sample": {
                     "summary": "성공 응답 예시",
-                    "value": { "message": "예약이 취소되었습니다." }
+                    "value": {
+                      "message": "예약이 취소되었습니다."
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       }
     },
-    "/reservations/{id}/payment-info": {
+    "/reservations/{id}/payment_info": {
       "put": {
-        "tags": ["펀딩 결제 및 예약 (Reservations & Payments)"],
+        "tags": [
+          "펀딩 결제 및 예약 (Reservations & Payments)"
+        ],
         "summary": "결제 정보 수정",
         "description": "지정된 예약 ID에 연결된 결제 정보를 수정합니다. 결제 예정일 하루 전에는 수정할 수 없습니다.",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "$ref": "#/components/parameters/reservationId" }
+          {
+            "$ref": "#/components/parameters/reservationId"
+          }
         ],
         "requestBody": {
           "description": "수정할 결제 정보",
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/PaymentInfoUpdateRequest" },
+              "schema": {
+                "$ref": "#/components/schemas/PaymentInfoUpdateRequest"
+              },
               "examples": {
                 "card_example": {
                   "summary": "카드 결제 정보 수정 예시",
@@ -519,21 +717,35 @@
             "description": "결제 정보 수정 성공",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/MessageResponse" },
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
                 "examples": {
                   "sample": {
                     "summary": "성공 응답 예시",
-                    "value": { "message": "펀딩 결제 정보가 정상적으로 수정되었습니다." }
+                    "value": {
+                      "message": "펀딩 결제 정보가 정상적으로 수정되었습니다."
+                    }
                   }
                 }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       }
     }
@@ -576,7 +788,10 @@
         "in": "path",
         "required": true,
         "description": "예약 정보의 고유 ID",
-        "schema": { "type": "integer", "example": 21 }
+        "schema": {
+          "type": "integer",
+          "example": 21
+        }
       }
     },
     "schemas": {
@@ -585,27 +800,64 @@
         "title": "결제 정보 입력",
         "description": "새로운 결제 정보를 등록하기 위한 요청 본문입니다.",
         "properties": {
-          "orderId": { "type": "string", "description": "주문 식별자", "example": "ORD123456" },
-          "amount": { "type": "integer", "description": "결제 금액 (원)", "example": 50000 },
+          "orderId": {
+            "type": "string",
+            "description": "주문 식별자",
+            "example": "ORD123456"
+          },
+          "amount": {
+            "type": "integer",
+            "description": "결제 금액 (원)",
+            "example": 50000
+          },
           "method": {
             "type": "string",
-            "enum": ["CARD", "TRANSFER", "VIRTUAL_ACCOUNT"],
+            "enum": [
+              "CARD",
+              "TRANSFER",
+              "VIRTUAL_ACCOUNT"
+            ],
             "description": "결제 수단",
             "example": "CARD"
           }
         },
-        "required": ["orderId", "amount", "method"]
+        "required": [
+          "orderId",
+          "amount",
+          "method"
+        ]
       },
       "PaymentInfoResponse": {
         "type": "object",
         "title": "결제 정보 응답",
         "description": "조회된 결제 정보의 상세 내용입니다.",
         "properties": {
-          "paymentId": { "type": "integer", "description": "결제 정보 ID", "example": 42 },
-          "orderId": { "type": "string", "description": "주문 식별자", "example": "ORD123456" },
-          "amount": { "type": "integer", "description": "결제 금액 (원)", "example": 50000 },
-          "method": { "type": "string", "description": "결제 수단", "example": "CARD" },
-          "createdAt": { "type": "string", "format": "date-time", "description": "결제 정보 생성 일시", "example": "2025-07-18T12:34:56Z" }
+          "paymentId": {
+            "type": "integer",
+            "description": "결제 정보 ID",
+            "example": 42
+          },
+          "orderId": {
+            "type": "string",
+            "description": "주문 식별자",
+            "example": "ORD123456"
+          },
+          "amount": {
+            "type": "integer",
+            "description": "결제 금액 (원)",
+            "example": 50000
+          },
+          "method": {
+            "type": "string",
+            "description": "결제 수단",
+            "example": "CARD"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "결제 정보 생성 일시",
+            "example": "2025-07-18T12:34:56Z"
+          }
         }
       },
       "CountResponse": {
@@ -613,7 +865,11 @@
         "title": "총 개수 응답",
         "description": "펀딩 프로젝트의 총 개수를 나타냅니다.",
         "properties": {
-          "totalCount": { "type": "integer", "example": 120, "description": "총 펀딩 프로젝트 개수" }
+          "totalCount": {
+            "type": "integer",
+            "example": 120,
+            "description": "총 펀딩 프로젝트 개수"
+          }
         }
       },
       "HistoryResponse": {
@@ -624,15 +880,33 @@
           "meta": {
             "type": "object",
             "properties": {
-              "totalItems": { "type": "integer", "example": 100, "description": "전체 항목 수" },
-              "totalPages": { "type": "integer", "example": 10, "description": "전체 페이지 수" },
-              "currentPage": { "type": "integer", "example": 1, "description": "현재 페이지" },
-              "limit": { "type": "integer", "example": 10, "description": "페이지당 항목 수" }
+              "totalItems": {
+                "type": "integer",
+                "example": 100,
+                "description": "전체 항목 수"
+              },
+              "totalPages": {
+                "type": "integer",
+                "example": 10,
+                "description": "전체 페이지 수"
+              },
+              "currentPage": {
+                "type": "integer",
+                "example": 1,
+                "description": "현재 페이지"
+              },
+              "limit": {
+                "type": "integer",
+                "example": 10,
+                "description": "페이지당 항목 수"
+              }
             }
           },
           "data": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/PaymentInfoResponse" }
+            "items": {
+              "$ref": "#/components/schemas/PaymentInfoResponse"
+            }
           }
         }
       },
@@ -641,8 +915,16 @@
         "title": "통계 요약 응답",
         "description": "총 모금액과 후원자 수에 대한 요약 정보입니다.",
         "properties": {
-          "totalAmount": { "type": "integer", "example": 15000000, "description": "총 모금액 (원)" },
-          "totalSupporters": { "type": "integer", "example": 500, "description": "총 후원자 수" }
+          "totalAmount": {
+            "type": "integer",
+            "example": 15000000,
+            "description": "총 모금액 (원)"
+          },
+          "totalSupporters": {
+            "type": "integer",
+            "example": 500,
+            "description": "총 후원자 수"
+          }
         }
       },
       "GraphResponse": {
@@ -650,14 +932,24 @@
         "title": "그래프 데이터 응답",
         "description": "월별 후원자 수 및 모금액 그래프를 위한 데이터입니다.",
         "properties": {
-          "month": { "type": "string", "example": "2025-07", "description": "연월" },
+          "month": {
+            "type": "string",
+            "example": "2025-07",
+            "description": "연월"
+          },
           "supporters": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "day": { "type": "integer", "example": 1 },
-                "count": { "type": "integer", "example": 10 }
+                "day": {
+                  "type": "integer",
+                  "example": 1
+                },
+                "count": {
+                  "type": "integer",
+                  "example": 10
+                }
               }
             },
             "description": "일별 후원자 수"
@@ -667,8 +959,14 @@
             "items": {
               "type": "object",
               "properties": {
-                "day": { "type": "integer", "example": 1 },
-                "amount": { "type": "integer", "example": 100000 }
+                "day": {
+                  "type": "integer",
+                  "example": 1
+                },
+                "amount": {
+                  "type": "integer",
+                  "example": 100000
+                }
               }
             },
             "description": "일별 모금액"
@@ -680,13 +978,44 @@
         "title": "예약 요약 정보",
         "description": "펀딩 결제 및 예약 목록 조회 시 반환되는 간략한 예약 정보입니다.",
         "properties": {
-          "scheduleId": { "type": "integer", "example": 12, "description": "예약 스케줄 ID" },
-          "productImage": { "type": "string", "format": "uri", "example": "https://example.com/product_a.jpg", "description": "제품 대표 이미지 URL" },
-          "productName": { "type": "string", "example": "프로젝트 A", "description": "프로젝트/제품 이름" },
-          "optionName": { "type": "string", "example": "얼리버드", "description": "선택한 옵션 이름" },
-          "totalAmount": { "type": "integer", "example": 5000, "description": "총 결제 금액" },
-          "scheduleDate": { "type": "string", "format": "date-time", "example": "2025-08-01T10:00:00.000Z", "description": "결제 예정일" },
-          "createdAt": { "type": "string", "format": "date-time", "example": "2025-07-14T09:30:00.000Z", "description": "예약 생성일" }
+          "scheduleId": {
+            "type": "integer",
+            "example": 12,
+            "description": "예약 스케줄 ID"
+          },
+          "productImage": {
+            "type": "string",
+            "format": "uri",
+            "example": "https://example.com/product_a.jpg",
+            "description": "제품 대표 이미지 URL"
+          },
+          "productName": {
+            "type": "string",
+            "example": "프로젝트 A",
+            "description": "프로젝트/제품 이름"
+          },
+          "optionName": {
+            "type": "string",
+            "example": "얼리버드",
+            "description": "선택한 옵션 이름"
+          },
+          "totalAmount": {
+            "type": "integer",
+            "example": 5000,
+            "description": "총 결제 금액"
+          },
+          "scheduleDate": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2025-08-01T10:00:00.000Z",
+            "description": "결제 예정일"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2025-07-14T09:30:00.000Z",
+            "description": "예약 생성일"
+          }
         }
       },
       "ReservationListResponse": {
@@ -696,10 +1025,16 @@
         "properties": {
           "data": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/ReservationSummary" },
+            "items": {
+              "$ref": "#/components/schemas/ReservationSummary"
+            },
             "description": "예약 요약 정보 목록"
           },
-          "count": { "type": "integer", "example": 10, "description": "전체 예약 개수" }
+          "count": {
+            "type": "integer",
+            "example": 10,
+            "description": "전체 예약 개수"
+          }
         }
       },
       "ReservationDetail": {
@@ -707,43 +1042,176 @@
         "title": "예약 상세 정보",
         "description": "특정 펀딩 결제 및 예약의 상세 정보입니다.",
         "properties": {
-          "id": { "type": "integer", "example": 21, "description": "예약 고유 ID" },
-          "userId": { "type": "integer", "example": 8, "description": "예약한 사용자 ID" },
-          "rewardId": { "type": "integer", "example": 3, "description": "선택한 리워드 ID" },
-          "paymentInfoId": { "type": "integer", "example": 5, "description": "연결된 결제 정보 ID" },
-          "productImage": { "type": "string", "format": "uri", "example": "https://example.com/product_a_detail.jpg", "description": "제품 대표 이미지 URL" },
-          "productName": { "type": "string", "example": "프로젝트 A", "description": "프로젝트/제품 이름" },
-          "optionName": { "type": "string", "example": "얼리버드", "description": "선택한 옵션 이름" },
-          "optionAmount": { "type": "integer", "example": 3000, "description": "옵션 추가 금액" },
-          "amount": { "type": "integer", "example": 5000, "description": "기본 후원 금액" },
-          "donateAmount": { "type": "integer", "nullable": true, "example": null, "description": "추가 후원 금액 (선택 사항)" },
-          "totalAmount": { "type": "integer", "example": 20000, "description": "총 결제 금액" },
-          "scheduleDate": { "type": "string", "format": "date-time", "example": "2025-07-20T00:00:00.000Z", "description": "결제 예정일" },
-          "executed": { "type": "boolean", "example": false, "description": "결제 실행 여부" },
-          "createdAt": { "type": "string", "format": "date-time", "example": "2025-07-14T12:00:00.000Z", "description": "예약 생성일" },
-          "address": { "type": "string", "example": "서울시 강남구 역삼동", "description": "배송 주소" },
-          "addressNumber": { "type": "integer", "example": 6212, "description": "배송지 우편번호" },
-          "addressInfo": { "type": "string", "example": "역삼역 1번 출구", "description": "배송지 상세 정보" },
-          "retryCount": { "type": "integer", "example": 0, "description": "결제 재시도 횟수" },
-          "lastErrorMessage": { "type": "string", "nullable": true, "example": null, "description": "마지막 결제 오류 메시지" }
+          "id": {
+            "type": "integer",
+            "example": 21,
+            "description": "예약 고유 ID"
+          },
+          "userId": {
+            "type": "integer",
+            "example": 8,
+            "description": "예약한 사용자 ID"
+          },
+          "rewardId": {
+            "type": "integer",
+            "example": 3,
+            "description": "선택한 리워드 ID"
+          },
+          "paymentInfoId": {
+            "type": "integer",
+            "example": 5,
+            "description": "연결된 결제 정보 ID"
+          },
+          "productImage": {
+            "type": "string",
+            "format": "uri",
+            "example": "https://example.com/product_a_detail.jpg",
+            "description": "제품 대표 이미지 URL"
+          },
+          "productName": {
+            "type": "string",
+            "example": "프로젝트 A",
+            "description": "프로젝트/제품 이름"
+          },
+          "optionName": {
+            "type": "string",
+            "example": "얼리버드",
+            "description": "선택한 옵션 이름"
+          },
+          "optionAmount": {
+            "type": "integer",
+            "example": 3000,
+            "description": "옵션 추가 금액"
+          },
+          "amount": {
+            "type": "integer",
+            "example": 5000,
+            "description": "기본 후원 금액"
+          },
+          "donateAmount": {
+            "type": "integer",
+            "nullable": true,
+            "example": null,
+            "description": "추가 후원 금액 (선택 사항)"
+          },
+          "totalAmount": {
+            "type": "integer",
+            "example": 20000,
+            "description": "총 결제 금액"
+          },
+          "scheduleDate": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2025-07-20T00:00:00.000Z",
+            "description": "결제 예정일"
+          },
+          "executed": {
+            "type": "boolean",
+            "example": false,
+            "description": "결제 실행 여부"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2025-07-14T12:00:00.000Z",
+            "description": "예약 생성일"
+          },
+          "address": {
+            "type": "string",
+            "example": "서울시 강남구 역삼동",
+            "description": "배송 주소"
+          },
+          "addressNumber": {
+            "type": "integer",
+            "example": 6212,
+            "description": "배송지 우편번호"
+          },
+          "addressInfo": {
+            "type": "string",
+            "example": "역삼역 1번 출구",
+            "description": "배송지 상세 정보"
+          },
+          "retryCount": {
+            "type": "integer",
+            "example": 0,
+            "description": "결제 재시도 횟수"
+          },
+          "lastErrorMessage": {
+            "type": "string",
+            "nullable": true,
+            "example": null,
+            "description": "마지막 결제 오류 메시지"
+          }
         }
       },
       "ReservationCreateRequest": {
         "type": "object",
         "title": "예약 생성 요청",
         "description": "새로운 펀딩 결제 예약을 등록하기 위한 요청 본문입니다.",
-        "required": ["paymentInfoId", "rewardId", "projectId", "amount", "totalAmount", "scheduleDate", "address", "addressNumber", "addressInfo"],
+        "required": [
+          "paymentInfoId",
+          "rewardId",
+          "projectId",
+          "amount",
+          "totalAmount",
+          "scheduleDate",
+          "address",
+          "addressNumber",
+          "addressInfo"
+        ],
         "properties": {
-          "paymentInfoId": { "type": "integer", "example": 5, "description": "사용자의 결제 정보 ID" },
-          "rewardId": { "type": "integer", "example": 50, "description": "선택한 리워드 ID" },
-          "projectId": { "type": "integer", "example": 50, "description": "예약할 프로젝트 ID" },
-          "amount": { "type": "integer", "example": 5000, "description": "리워드 기본 금액" },
-          "donateAmount": { "type": "integer", "nullable": true, "example": 2000, "description": "추가 후원 금액 (선택 사항)" },
-          "totalAmount": { "type": "integer", "example": 7000, "description": "총 결제 금액 (amount + donateAmount)" },
-          "scheduleDate": { "type": "string", "format": "date-time", "example": "2025-08-01T10:00:00.000Z", "description": "결제 예정일" },
-          "address": { "type": "string", "example": "서울시 강남구 역삼동", "description": "배송 주소" },
-          "addressNumber": { "type": "integer", "example": 12345, "description": "배송지 우편번호" },
-          "addressInfo": { "type": "string", "example": "역삼역 1번 출구", "description": "배송지 상세 정보" }
+          "paymentInfoId": {
+            "type": "integer",
+            "example": 5,
+            "description": "사용자의 결제 정보 ID"
+          },
+          "rewardId": {
+            "type": "integer",
+            "example": 50,
+            "description": "선택한 리워드 ID"
+          },
+          "projectId": {
+            "type": "integer",
+            "example": 50,
+            "description": "예약할 프로젝트 ID"
+          },
+          "amount": {
+            "type": "integer",
+            "example": 5000,
+            "description": "리워드 기본 금액"
+          },
+          "donateAmount": {
+            "type": "integer",
+            "nullable": true,
+            "example": 2000,
+            "description": "추가 후원 금액 (선택 사항)"
+          },
+          "totalAmount": {
+            "type": "integer",
+            "example": 7000,
+            "description": "총 결제 금액 (amount + donateAmount)"
+          },
+          "scheduleDate": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2025-08-01T10:00:00.000Z",
+            "description": "결제 예정일"
+          },
+          "address": {
+            "type": "string",
+            "example": "서울시 강남구 역삼동",
+            "description": "배송 주소"
+          },
+          "addressNumber": {
+            "type": "integer",
+            "example": 12345,
+            "description": "배송지 우편번호"
+          },
+          "addressInfo": {
+            "type": "string",
+            "example": "역삼역 1번 출구",
+            "description": "배송지 상세 정보"
+          }
         }
       },
       "ReservationUpdateRequest": {
@@ -751,42 +1219,132 @@
         "title": "예약 정보 수정 요청",
         "description": "펀딩 결제 및 예약 정보를 부분적으로 수정하기 위한 요청 본문입니다.",
         "properties": {
-          "rewardId": { "type": "integer", "example": 2, "description": "새로운 리워드 ID" },
-          "donateAmount": { "type": "integer", "nullable": true, "example": 8000, "description": "새로운 추가 후원 금액" },
-          "scheduleDate": { "type": "string", "format": "date-time", "example": "2025-07-22T00:00:00.000Z", "description": "새로운 결제 예정일" },
-          "address": { "type": "string", "example": "서울시 강남구 역삼로 123", "description": "새로운 배송 주소" },
-          "addressNumber": { "type": "integer", "example": 6213, "description": "새로운 배송지 우편번호" },
-          "addressInfo": { "type": "string", "example": "빌딩명 3층", "description": "새로운 배송지 상세 정보" }
+          "rewardId": {
+            "type": "integer",
+            "example": 2,
+            "description": "새로운 리워드 ID"
+          },
+          "donateAmount": {
+            "type": "integer",
+            "nullable": true,
+            "example": 8000,
+            "description": "새로운 추가 후원 금액"
+          },
+          "scheduleDate": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2025-07-22T00:00:00.000Z",
+            "description": "새로운 결제 예정일"
+          },
+          "address": {
+            "type": "string",
+            "example": "서울시 강남구 역삼로 123",
+            "description": "새로운 배송 주소"
+          },
+          "addressNumber": {
+            "type": "integer",
+            "example": 6213,
+            "description": "새로운 배송지 우편번호"
+          },
+          "addressInfo": {
+            "type": "string",
+            "example": "빌딩명 3층",
+            "description": "새로운 배송지 상세 정보"
+          }
         }
       },
       "PaymentInfoUpdateRequest": {
         "type": "object",
         "title": "결제 정보 수정 요청",
         "description": "예약에 연결된 결제 수단 정보를 수정하기 위한 요청 본문입니다.",
-        "required": ["method", "code", "token", "displayInfo", "extra"],
+        "required": [
+          "method",
+          "code",
+          "token",
+          "displayInfo",
+          "extra"
+        ],
         "properties": {
-          "method": { "type": "string", "enum": ["CARD", "VBANK"], "example": "CARD", "description": "결제 수단 (CARD: 카드, VBANK: 가상계좌)" },
-          "code": { "type": "string", "enum": ["KB", "NH", "SH", "IBK", "TOSS"], "example": "KB", "description": "은행/카드사 코드" },
-          "token": { "type": "string", "example": "some_payment_token", "description": "결제 수단 토큰 (PG사에서 발급)" },
-          "displayInfo": { "type": "string", "example": "신한카드 (1234)", "description": "사용자에게 보여줄 결제 정보 요약" },
+          "method": {
+            "type": "string",
+            "enum": [
+              "CARD",
+              "VBANK"
+            ],
+            "example": "CARD",
+            "description": "결제 수단 (CARD: 카드, VBANK: 가상계좌)"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "KB",
+              "NH",
+              "SH",
+              "IBK",
+              "TOSS"
+            ],
+            "example": "KB",
+            "description": "은행/카드사 코드"
+          },
+          "token": {
+            "type": "string",
+            "example": "some_payment_token",
+            "description": "결제 수단 토큰 (PG사에서 발급)"
+          },
+          "displayInfo": {
+            "type": "string",
+            "example": "신한카드 (1234)",
+            "description": "사용자에게 보여줄 결제 정보 요약"
+          },
           "extra": {
             "oneOf": [
               {
                 "type": "object",
                 "properties": {
-                  "type": { "type": "string", "enum": ["card"], "description": "추가 정보 타입: 카드" },
-                  "expMonth": { "type": "string", "example": "12", "description": "카드 유효기간 월 (MM)" },
-                  "expYear": { "type": "string", "example": "25", "description": "카드 유효기간 연도 (YY)" }
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "card"
+                    ],
+                    "description": "추가 정보 타입: 카드"
+                  },
+                  "expMonth": {
+                    "type": "string",
+                    "example": "12",
+                    "description": "카드 유효기간 월 (MM)"
+                  },
+                  "expYear": {
+                    "type": "string",
+                    "example": "25",
+                    "description": "카드 유효기간 연도 (YY)"
+                  }
                 },
-                "required": ["type", "expMonth", "expYear"]
+                "required": [
+                  "type",
+                  "expMonth",
+                  "expYear"
+                ]
               },
               {
                 "type": "object",
                 "properties": {
-                  "type": { "type": "string", "enum": ["vbank"], "description": "추가 정보 타입: 가상계좌" },
-                  "owner": { "type": "string", "example": "홍길동", "description": "가상계좌 예금주명" }
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "vbank"
+                    ],
+                    "description": "추가 정보 타입: 가상계좌"
+                  },
+                  "owner": {
+                    "type": "string",
+                    "example": "홍길동",
+                    "description": "가상계좌 예금주명"
+                  }
                 },
-                "required": ["type", "owner"]
+                "required": [
+                  "type",
+                  "owner"
+                ]
               }
             ],
             "description": "결제 수단에 따른 추가 정보"
@@ -798,7 +1356,11 @@
         "title": "ID 반환 응답",
         "description": "새로 생성된 리소스의 ID를 반환합니다.",
         "properties": {
-          "insertedId": { "type": "integer", "example": 23, "description": "새로 생성된 리소스의 고유 ID" }
+          "insertedId": {
+            "type": "integer",
+            "example": 23,
+            "description": "새로 생성된 리소스의 고유 ID"
+          }
         }
       },
       "MessageResponse": {
@@ -806,7 +1368,11 @@
         "title": "메시지 응답",
         "description": "간단한 성공 또는 실패 메시지를 반환합니다.",
         "properties": {
-          "message": { "type": "string", "example": "성공적으로 처리되었습니다.", "description": "응답 메시지" }
+          "message": {
+            "type": "string",
+            "example": "성공적으로 처리되었습니다.",
+            "description": "응답 메시지"
+          }
         }
       },
       "ErrorResponse": {
@@ -819,13 +1385,19 @@
       }
     },
     "responses": {
-      "BadRequest": { "$ref": "./auths.json#/components/responses/BadRequest" },
-      "Unauthorized": { "$ref": "./auths.json#/components/responses/Unauthorized" },
+      "BadRequest": {
+        "$ref": "./auths.json#/components/responses/BadRequest"
+      },
+      "Unauthorized": {
+        "$ref": "./auths.json#/components/responses/Unauthorized"
+      },
       "Forbidden": {
         "description": "접근 권한이 없거나, 요청이 허용되지 않는 상태입니다. (예: 결제 예정일 하루 전 수정 불가)",
         "content": {
           "application/json": {
-            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
             "examples": {
               "no_permission": {
                 "summary": "권한 없음",
@@ -849,7 +1421,9 @@
         "description": "요청한 리소스를 찾을 수 없습니다.",
         "content": {
           "application/json": {
-            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
             "examples": {
               "reservation_not_found": {
                 "summary": "예약 정보 없음",
@@ -869,7 +1443,9 @@
           }
         }
       },
-      "InternalError": { "$ref": "./auths.json#/components/responses/InternalError" }
+      "InternalError": {
+        "$ref": "./auths.json#/components/responses/InternalError"
+      }
     }
   }
 }

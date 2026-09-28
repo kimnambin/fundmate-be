@@ -1,13 +1,13 @@
 export interface HealthInfo {
   status: 'ok' | 'error';
   service: string;
-  timestamp: number;
+  timestamp: string;
 }
 
 export function getHealthInfo(): HealthInfo {
   return {
     status: 'ok',
     service: 'payment-service',
-    timestamp: Date.now(),
+    timestamp: new Date().toISOString(),
   };
 }

@@ -1,85 +1,80 @@
-import { Response, Request, Router } from 'express';
+import { Request, Response, Router } from 'express';
 import { StatusCodes } from 'http-status-codes';
-import { AppDataSource } from '../data-source';
+import { HttpError, asyncHandler, getUser } from '@shared/config';
 import { PaymentInfo } from '@shared/entities';
+import { AppDataSource } from '../data-source';
+import { parsePaymentInfoBody, requireId, toPaymentInfoDto } from '../modules/validation';
 
 const router = Router();
+
 // 결제 정보 등록
-router.post('/', async (req: Request, res: Response) => {
-  const { method, code, token, displayInfo, details } = req.body;
-  const { userId } = res.locals.user;
-  if (!method || !code || !token || !displayInfo || !details) {
-    return res.status(StatusCodes.BAD_REQUEST).json({ message: '올바른 결제정보를 입력해주세요' });
-  }
-  try {
-    const repo = AppDataSource.getRepository(PaymentInfo);
-    const paymentInfo = await repo.save({
-      userId,
-      method,
-      code,
-      token,
-      displayInfo,
-      details,
-    });
-    const insertedId = paymentInfo.id;
-    return res.status(StatusCodes.CREATED).json({ insertedId });
-  } catch (err) {
-    console.error(err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: '결제정보 등록 실패' });
-  }
-});
+// 참고: 요청의 `token`은 저장하지 않는다. PG 연동(결제 실행 주체, 빌링키 암호화 저장)이 정해질 때까지 받지도 요구하지도 않는다.
+router.post(
+  '/',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { userId } = getUser(res);
+    const input = parsePaymentInfoBody(req.body);
 
-// 결제 정보 삭제 -> 이건 아마 함수로만 구현할듯
-router.delete('/:id', (req, res) => {
-  const paymentInfoId = +req.params.id;
-  const { userId } = res.locals.user;
-  try {
     const repo = AppDataSource.getRepository(PaymentInfo);
-    repo.delete({ id: paymentInfoId, userId });
+    const saved = await repo.save(repo.create({ userId, ...input }));
 
-    return res.status(StatusCodes.OK).json({ message: '결제정보가 정상적으로 삭제되었습니다.' });
-  } catch (err) {
-    console.error(err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: '결제정보 삭제 실패' });
-  }
-});
+    res.status(StatusCodes.CREATED).json({ insertedId: saved.id });
+  })
+);
+
+// 결제 정보 삭제
+// 예약에 연결된 결제 수단은 실제로 지우지 않고 비활성화한다. (지우면 예약이 결제 수단을 잃어 조회·취소가 깨진다)
+router.delete(
+  '/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { userId } = getUser(res);
+    const id = requireId(req.params.id, '잘못된 결제 수단 ID입니다.');
+
+    const repo = AppDataSource.getRepository(PaymentInfo);
+    if (!(await repo.exists({ where: { id, userId } }))) {
+      throw new HttpError(StatusCodes.NOT_FOUND, '결제 수단을 찾을 수 없습니다.');
+    }
+
+    const [{ used }] = await AppDataSource.query('SELECT COUNT(*) AS used FROM payment_schedule WHERE payment_info_id = ?', [id]);
+    if (Number(used) > 0) {
+      await repo.update({ id, userId }, { isActive: false, isPrimary: false });
+    } else {
+      await repo.delete({ id, userId });
+    }
+
+    res.status(StatusCodes.OK).json({ message: '결제정보가 정상적으로 삭제되었습니다.' });
+  })
+);
 
 // 결제 정보 전체 조회
-router.get('/', async (req: Request, res: Response) => {
-  try {
-    const { userId } = res.locals.user;
+router.get(
+  '/',
+  asyncHandler(async (_req: Request, res: Response) => {
+    const { userId } = getUser(res);
 
-    const repo = AppDataSource.getRepository(PaymentInfo);
-    const list = await repo.find({
-      where: { userId },
+    const list = await AppDataSource.getRepository(PaymentInfo).find({
+      where: { userId, isActive: true },
       order: { createdAt: 'DESC' },
     });
 
-    return res.status(StatusCodes.OK).json({ data: list });
-  } catch (err) {
-    console.error(err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: '결제 수단 조회 실패' });
-  }
-});
+    res.status(StatusCodes.OK).json({ data: list.map(toPaymentInfoDto) });
+  })
+);
 
 // 결제 정보 조회
-router.get('/:id', async (req: Request, res: Response) => {
-  try {
-    const { userId } = res.locals.user;
-    const paymentInfoId = +req.params.id;
+router.get(
+  '/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { userId } = getUser(res);
+    const id = requireId(req.params.id, '잘못된 결제 수단 ID입니다.');
 
-    const repo = AppDataSource.getRepository(PaymentInfo);
-    const item = await repo.findOneBy({ id: paymentInfoId, userId });
-
+    const item = await AppDataSource.getRepository(PaymentInfo).findOneBy({ id, userId, isActive: true });
     if (!item) {
-      return res.status(StatusCodes.NOT_FOUND).json({ message: '결제 수단을 찾을 수 없습니다.' });
+      throw new HttpError(StatusCodes.NOT_FOUND, '결제 수단을 찾을 수 없습니다.');
     }
 
-    return res.status(StatusCodes.OK).json({ data: item });
-  } catch (err) {
-    console.error(err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: '결제 수단 조회 실패' });
-  }
-});
+    res.status(StatusCodes.OK).json({ data: toPaymentInfoDto(item) });
+  })
+);
 
 export default router;

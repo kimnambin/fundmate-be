@@ -1,67 +1,90 @@
-import { Router } from 'express';
+import { Request, Response, Router } from 'express';
 import { StatusCodes } from 'http-status-codes';
-import { AppDataSource } from '../data-source';
-import { PaymentHistory, PaymentInfo, PaymentSchedule, OptionData, Project } from '@shared/entities';
-import createError from 'http-errors';
 import { DeepPartial } from 'typeorm';
+import { HttpError, asyncHandler, getUser } from '@shared/config';
+import { OptionData, PaymentHistory, PaymentInfo, PaymentSchedule, Project } from '@shared/entities';
+import { AppDataSource } from '../data-source';
+import {
+  MAX_AMOUNT,
+  addDays,
+  kstDate,
+  kstMidnight,
+  optionalAmount,
+  parseAddress,
+  parsePaymentInfoBody,
+  requireAmount,
+  requireId,
+  todayKst,
+} from '../modules/validation';
 
 const router = Router();
 
-// 펀딩 결제 및 예약 내역 전체 조회
-router.get('/', async (req, res) => {
-  const { userId } = res.locals.user;
-  if (!userId) return res.status(StatusCodes.UNAUTHORIZED).json({ message: '로그인이 필요합니다.' });
-  try {
-    const paymentScheduleRepo = AppDataSource.getRepository(PaymentSchedule);
-    const [findBySchedule, count] = await paymentScheduleRepo.findAndCount({
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const bad = (message: string) => new HttpError(StatusCodes.BAD_REQUEST, message);
+
+/** 결제 예정일 하루 전부터는 예약 내용을 바꿀 수 없다. */
+const assertEditable = (schedule: PaymentSchedule) => {
+  if (schedule.executed) {
+    throw new HttpError(StatusCodes.CONFLICT, '이미 결제가 실행된 예약입니다.');
+  }
+  const msUntilPayment = schedule.scheduleDate.getTime() - Date.now();
+  if (msUntilPayment <= ONE_DAY_MS) {
+    throw new HttpError(StatusCodes.FORBIDDEN, '결제 예정일 하루 전부터는 결제 정보를 수정할 수 없습니다.');
+  }
+};
+
+/** `date` 컬럼은 문자열('YYYY-MM-DD') 또는 Date로 온다. */
+const dateOf = (value: unknown): string => (typeof value === 'string' ? value.slice(0, 10) : kstDate(value as Date));
+
+// 펀딩 결제 및 예약 내역 전체 조회 (예약이 없으면 빈 목록)
+router.get(
+  '/',
+  asyncHandler(async (_req: Request, res: Response) => {
+    const { userId } = getUser(res);
+
+    const [schedules, count] = await AppDataSource.getRepository(PaymentSchedule).findAndCount({
       where: { userId },
       relations: ['project', 'option'],
+      order: { createdAt: 'DESC', id: 'DESC' },
     });
-    if (findBySchedule.length === 0) {
-      return res.status(StatusCodes.NOT_FOUND).json({ message: '예약된 정보가 없습니다.' });
-    }
-    const data = findBySchedule.map((schedule) => ({
+
+    // 프로젝트가 삭제되었거나(project = null) 옵션이 없는 예약도 목록에서 빠지지 않는다.
+    const data = schedules.map((schedule) => ({
       scheduleId: schedule.id,
-      productImage: schedule.project.imageUrl,
-      productName: schedule.project.title,
+      productImage: schedule.project?.imageUrl ?? null,
+      productName: schedule.project?.title ?? null,
       optionName: schedule.option?.title ?? null,
       totalAmount: schedule.totalAmount,
       scheduleDate: schedule.scheduleDate,
       createdAt: schedule.createdAt,
     }));
 
-    return res.status(StatusCodes.OK).json({ data, count });
-  } catch (err) {
-    console.error(err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: '전체 펀딩 조회 실패' });
-  }
-});
+    res.status(StatusCodes.OK).json({ data, count });
+  })
+);
 
 // 펀딩 결제 및 예약 내역 상세 조회
-router.get('/:id', async (req, res) => {
-  const { userId } = res.locals.user;
-  if (!userId) return res.status(StatusCodes.UNAUTHORIZED).json({ message: '로그인이 필요합니다.' });
-  const reservationId = +req.params.id;
-  try {
-    const paymentScheduleRepo = AppDataSource.getRepository(PaymentSchedule);
-    const findBySchedule = await paymentScheduleRepo.findOne({
+router.get(
+  '/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { userId } = getUser(res);
+    const reservationId = requireId(req.params.id, '잘못된 예약 ID입니다.');
+
+    const schedule = await AppDataSource.getRepository(PaymentSchedule).findOne({
       where: { id: reservationId, userId },
       relations: ['project', 'option', 'paymentInfo'],
     });
-    if (!findBySchedule) {
-      return res
-        .status(StatusCodes.NOT_FOUND)
-        .json({ message: '이미 취소되었거나 존재하지 않는 예약입니다.' });
+    if (!schedule) {
+      throw new HttpError(StatusCodes.NOT_FOUND, '이미 취소되었거나 존재하지 않는 예약입니다.');
     }
 
-    const schedule = findBySchedule;
-    const result = {
+    res.status(StatusCodes.OK).json({
       id: schedule.id,
       userId: schedule.userId,
       rewardId: schedule.option?.optionId ?? null,
-      paymentInfoId: schedule.paymentInfo.id,
-      productImage: schedule.project.imageUrl,
-      productName: schedule.project.title,
+      paymentInfoId: schedule.paymentInfo?.id ?? null,
+      productImage: schedule.project?.imageUrl ?? null,
+      productName: schedule.project?.title ?? null,
       optionName: schedule.option?.title ?? null,
       optionAmount: schedule.option?.price ?? null,
       amount: schedule.amount,
@@ -75,224 +98,204 @@ router.get('/:id', async (req, res) => {
       addressInfo: schedule.addressInfo ?? null,
       retryCount: schedule.retryCount,
       lastErrorMessage: schedule.lastErrorMessage ?? null,
-    };
-    return res.status(StatusCodes.OK).json(result);
-  } catch (err) {
-    console.error(err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: '펀딩 조회 실패' });
-  }
-});
+    });
+  })
+);
 
 // 펀딩 결제 및 예약 등록
-router.post('/', async (req, res) => {
-  const { userId } = res.locals.user;
-  if (!userId) return res.status(StatusCodes.UNAUTHORIZED).json({ message: '로그인이 필요합니다.' });
-  const {
-    paymentInfoId,
-    rewardId,
-    projectId,
-    amount,
-    rewardAmount,
-    donateAmount,
-    totalAmount,
-    scheduleDate,
-    address,
-    addressNumber,
-    addressInfo,
-  } = req.body;
-  if (!paymentInfoId || !projectId || !amount || !totalAmount || !scheduleDate) {
-    return res.status(StatusCodes.BAD_REQUEST).json({ message: '펀딩 등록 정보가 누락 되었습니다.' });
-  }
-  if (totalAmount !== (rewardId ? rewardAmount ?? 0 : 0) + (donateAmount ?? 0) + amount) {
-    return res.status(StatusCodes.BAD_REQUEST).json({ message: '금액이 맞지 않습니다' });
-  }
-  try {
-    // 사전 검증: 외래키 참조 대상이 존재하는지 확인
-    const paymentInfoRepo = AppDataSource.getRepository(PaymentInfo);
-    const projectRepo = AppDataSource.getRepository(Project);
-    const optionRepo = AppDataSource.getRepository(OptionData);
+// 금액은 서버가 계산한다. 클라이언트가 보낸 rewardAmount / totalAmount는 서버 계산값과 맞는지 대조하는 데만 쓴다.
+// 결제 예정일도 서버가 정한다. (프로젝트 종료일 다음 날)
+router.post(
+  '/',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { userId } = getUser(res);
+    const body = (req.body ?? {}) as Record<string, unknown>;
 
-    const paymentInfoExist = await paymentInfoRepo.findOneBy({ id: paymentInfoId });
-    if (!paymentInfoExist) {
-      return res.status(StatusCodes.BAD_REQUEST).json({ message: '유효하지 않은 결제 수단 ID입니다.' });
-    }
+    const paymentInfoId = requireId(body.paymentInfoId, '결제 수단 ID가 올바르지 않습니다.');
+    const projectId = requireId(body.projectId, '프로젝트 ID가 올바르지 않습니다.');
+    const rewardId = body.rewardId === undefined || body.rewardId === null ? undefined : requireId(body.rewardId, '옵션 ID가 올바르지 않습니다.');
+    const amount = requireAmount(body.amount, '후원 금액(amount)');
+    const donateAmount = optionalAmount(body.donateAmount, '추가 후원금(donateAmount)') ?? 0;
+    const clientRewardAmount = optionalAmount(body.rewardAmount, '리워드 금액(rewardAmount)');
+    const clientTotalAmount = optionalAmount(body.totalAmount, '총 금액(totalAmount)');
+    const address = parseAddress(body);
 
-    const projectExist = await projectRepo.findOneBy({ projectId });
-    if (!projectExist) {
-      return res.status(StatusCodes.BAD_REQUEST).json({ message: '유효하지 않은 프로젝트 ID입니다.' });
-    }
+    const insertedId = await AppDataSource.transaction(async (manager) => {
+      // 내 결제 수단만 사용할 수 있다.
+      const paymentInfo = await manager.findOneBy(PaymentInfo, { id: paymentInfoId, userId });
+      if (!paymentInfo || paymentInfo.isActive === false) throw bad('유효하지 않은 결제 수단 ID입니다.');
 
-    if (rewardId !== undefined && rewardId !== null) {
-      const optionExist = await optionRepo.findOneBy({ optionId: rewardId });
-      if (!optionExist) {
-        return res.status(StatusCodes.BAD_REQUEST).json({ message: '유효하지 않은 옵션 ID입니다.' });
+      const project = await manager.findOne(Project, {
+        where: { projectId },
+        relations: { user: true },
+        select: { projectId: true, startDate: true, endDate: true, user: { userId: true } },
+      });
+      if (!project) throw bad('유효하지 않은 프로젝트 ID입니다.');
+      if (project.user?.userId === userId) {
+        throw new HttpError(StatusCodes.FORBIDDEN, '자신의 프로젝트에는 후원할 수 없습니다.');
       }
-    }
-    const scheduleRepo = AppDataSource.getRepository(PaymentSchedule);
-    const newSchedule = scheduleRepo.create({
-      userId,
-      option: { optionId: rewardId },
-      paymentInfo: { id: paymentInfoId },
-      project: { projectId },
-      donateAmount,
-      amount,
-      totalAmount,
-      scheduleDate,
-      address,
-      addressNumber,
-      addressInfo,
-    });
-    const savedSchedule = await scheduleRepo.save(newSchedule);
-    return res.status(StatusCodes.CREATED).json({ insertedId: savedSchedule.id });
-  } catch (err) {
-    console.error(err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: '펀딩 등록 실패' });
-  }
-});
 
-// 펀딩 결제 및 예약 정보 수정
-router.patch('/:id', async (req, res) => {
-  const { userId } = res.locals.user;
-  if (!userId) return res.status(StatusCodes.UNAUTHORIZED).json({ message: '로그인이 필요합니다.' });
+      const today = todayKst();
+      const startDate = dateOf(project.startDate);
+      const endDate = dateOf(project.endDate);
+      if (today < startDate || today > endDate) throw bad('진행 중인 프로젝트만 후원할 수 있습니다.');
 
-  const reservationId = +req.params.id;
-  try {
-    const scheduleRepo = AppDataSource.getRepository(PaymentSchedule);
-    const optionRepo = AppDataSource.getRepository(OptionData);
-    const schedule = await scheduleRepo.findOne({
-      where: { id: reservationId, userId },
-      relations: ['option', 'paymentInfo', 'project'],
+      // 옵션은 이 프로젝트의 것이어야 한다.
+      let rewardPrice = 0;
+      let option: OptionData | null = null;
+      if (rewardId !== undefined) {
+        option = await manager.findOne(OptionData, { where: { optionId: rewardId, project: { projectId } } });
+        if (!option) throw bad('유효하지 않은 옵션 ID입니다.');
+        rewardPrice = option.price;
+      }
+      // 옵션을 골랐다면 클라이언트가 보낸 리워드 금액은 서버가 조회한 가격과 같아야 한다.
+      if (option && clientRewardAmount !== undefined && clientRewardAmount !== rewardPrice) {
+        throw bad('리워드 금액이 맞지 않습니다.');
+      }
+
+      const totalAmount = rewardPrice + donateAmount + amount;
+      if (totalAmount <= 0 || totalAmount > MAX_AMOUNT) throw bad('총 금액이 올바르지 않습니다.');
+      if (clientTotalAmount !== undefined && clientTotalAmount !== totalAmount) throw bad('금액이 맞지 않습니다.');
+
+      // 같은 프로젝트에 중복 예약(더블 클릭 등)을 막는다.
+      if (await manager.exists(PaymentSchedule, { where: { userId, project: { projectId } } })) {
+        throw new HttpError(StatusCodes.CONFLICT, '이미 후원 예약한 프로젝트입니다.');
+      }
+
+      const saved = await manager.save(
+        manager.create(PaymentSchedule, {
+          userId,
+          option: option ? { optionId: option.optionId } : undefined,
+          paymentInfo: { id: paymentInfoId },
+          project: { projectId },
+          donateAmount,
+          amount,
+          totalAmount,
+          scheduleDate: kstMidnight(addDays(endDate, 1)),
+          ...address,
+        } as DeepPartial<PaymentSchedule>)
+      );
+      return saved.id;
     });
 
-    if (!schedule) {
-      return res.status(StatusCodes.NOT_FOUND).json({ message: '예약된 정보가 없습니다.' });
-    }
-    const now = new Date();
-    const payDate = schedule.scheduleDate;
-    const isOneDayAgo = payDate.getTime() - now.getTime();
-    const oneDayMs = 24 * 60 * 60 * 1000;
+    res.status(StatusCodes.CREATED).json({ insertedId });
+  })
+);
 
-    if (isOneDayAgo <= oneDayMs) {
-      return res
-        .status(StatusCodes.FORBIDDEN)
-        .json({ message: '결제 예정일 하루 전에는 결제 정보를 수정할 수 없습니다.' });
-    }
+// 펀딩 결제 및 예약 정보 수정 (리워드, 추가 후원금, 배송지). 어떤 필드를 바꿔도 총액은 항상 다시 계산한다.
+router.patch(
+  '/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { userId } = getUser(res);
+    const reservationId = requireId(req.params.id, '잘못된 예약 ID입니다.');
+    const body = (req.body ?? {}) as Record<string, unknown>;
 
-    const {
-      rewardId: rawRewardId,
-      donateAmount: rawDonateAmount,
-      scheduleDate: rawScheduleDate,
-      address,
-      addressNumber,
-      addressInfo,
-    } = req.body;
-    const scheduleDate = rawScheduleDate !== undefined ? new Date(rawScheduleDate) : undefined;
+    // 결제일은 서버가 정하므로 scheduleDate는 받지 않는다.
+    const rewardId = body.rewardId === undefined || body.rewardId === null ? body.rewardId : requireId(body.rewardId, '옵션 ID가 올바르지 않습니다.');
+    const donateAmount = body.donateAmount === null ? 0 : optionalAmount(body.donateAmount, '추가 후원금(donateAmount)');
+    const address = parseAddress(body);
 
-    if (rawRewardId !== undefined) {
-      const optEntity = await optionRepo.findOneBy({ optionId: rawRewardId });
-      if (!optEntity) {
-        return res.status(StatusCodes.BAD_REQUEST).json({ message: '유효하지 않은 옵션 ID입니다.' });
+    await AppDataSource.transaction(async (manager) => {
+      const schedule = await manager.findOne(PaymentSchedule, {
+        where: { id: reservationId, userId },
+        relations: ['option', 'paymentInfo', 'project'],
+      });
+      if (!schedule) throw new HttpError(StatusCodes.NOT_FOUND, '예약된 정보가 없습니다.');
+      assertEditable(schedule);
+
+      if (rewardId === null) {
+        // TypeORM에서 관계를 비우려면 undefined(변경 없음)가 아니라 null이어야 한다.
+        schedule.option = null as unknown as undefined;
+      } else if (rewardId !== undefined) {
+        if (!schedule.project) throw new HttpError(StatusCodes.CONFLICT, '삭제된 프로젝트의 예약은 수정할 수 없습니다.');
+        const option = await manager.findOne(OptionData, {
+          where: { optionId: rewardId as number, project: { projectId: schedule.project.projectId } },
+        });
+        if (!option) throw bad('유효하지 않은 옵션 ID입니다.');
+        schedule.option = option;
       }
-      schedule.option = optEntity;
-    }
-    if (rawDonateAmount !== undefined) {
-      schedule.donateAmount = rawDonateAmount;
-      const rewardAmount = schedule.option?.price ?? 0;
-      schedule.totalAmount = schedule.amount + rewardAmount + rawDonateAmount;
-    }
-    if (scheduleDate !== undefined) {
-      schedule.scheduleDate = scheduleDate;
-    }
-    if (address !== undefined) {
-      schedule.address = address;
-    }
-    if (addressNumber !== undefined) {
-      schedule.addressNumber = addressNumber;
-    }
-    if (addressInfo !== undefined) {
-      schedule.addressInfo = addressInfo;
-    }
+      if (donateAmount !== undefined) schedule.donateAmount = donateAmount;
 
-    await scheduleRepo.save(schedule);
-    return res.status(StatusCodes.OK).json({ message: '펀딩 정보가 정상적으로 수정되었습니다.' });
-  } catch (err) {
-    console.error(err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: '펀딩 수정 실패' });
-  }
-});
+      const totalAmount = schedule.amount + (schedule.option?.price ?? 0) + (schedule.donateAmount ?? 0);
+      if (totalAmount <= 0 || totalAmount > MAX_AMOUNT) throw bad('총 금액이 올바르지 않습니다.');
+      schedule.totalAmount = totalAmount;
 
-// 결제 정보 수정
-router.put('/:id/payment_info', async (req, res) => {
-  const { userId } = res.locals.user;
-  if (!userId) return res.status(StatusCodes.UNAUTHORIZED).json({ message: '로그인이 필요합니다.' });
-  const reservationId = +req.params.id;
-  const { method, code, token, displayInfo, details } = req.body;
-  if (!method || !code || !token || !displayInfo || !details) {
-    return res.status(StatusCodes.BAD_REQUEST).json({ message: '올바른 결제정보를 입력해주세요' });
-  }
-  try {
+      if (address.address !== undefined) schedule.address = address.address;
+      if (address.addressNumber !== undefined) schedule.addressNumber = address.addressNumber;
+      if (address.addressInfo !== undefined) schedule.addressInfo = address.addressInfo;
+
+      await manager.save(schedule);
+    });
+
+    res.status(StatusCodes.OK).json({ message: '펀딩 정보가 정상적으로 수정되었습니다.' });
+  })
+);
+
+// 예약에 연결된 결제 수단 수정 (내 결제 수단만)
+router.put(
+  '/:id/payment_info',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { userId } = getUser(res);
+    const reservationId = requireId(req.params.id, '잘못된 예약 ID입니다.');
+    const input = parsePaymentInfoBody(req.body);
+
     await AppDataSource.transaction(async (manager) => {
       const reservation = await manager.findOne(PaymentSchedule, {
         where: { id: reservationId, userId },
         relations: ['paymentInfo'],
       });
-      if (!reservation) throw createError(StatusCodes.NOT_FOUND, '예약된 정보가 없습니다.');
+      if (!reservation) throw new HttpError(StatusCodes.NOT_FOUND, '예약된 정보가 없습니다.');
+      assertEditable(reservation);
 
-      const now = new Date();
-      const payDate = reservation.scheduleDate;
-      const isOneDayAgo = payDate.getTime() - now.getTime();
-      const oneDayMs = 24 * 60 * 60 * 1000;
-      if (isOneDayAgo <= oneDayMs) {
-        throw createError(StatusCodes.FORBIDDEN, '결제 예정일 하루 에는 결제 정보를 수정할 수 없습니다.');
-      }
+      // 예약에 연결된 결제 수단이 요청자의 것인지 다시 확인한다. (남의 결제 수단을 덮어쓰지 못하게)
+      const paymentInfo = reservation.paymentInfo
+        ? await manager.findOneBy(PaymentInfo, { id: reservation.paymentInfo.id, userId })
+        : null;
+      if (!paymentInfo) throw new HttpError(StatusCodes.NOT_FOUND, '연결된 결제수단을 찾을 수 없습니다.');
 
-      const paymentInfo = await manager.findOneBy(PaymentInfo, { id: reservation.paymentInfo.id });
-      if (!paymentInfo) throw createError(404, '연결된 결제수단을 찾을 수 없습니다.');
-
-      await manager.save(PaymentInfo, {
-        id: paymentInfo.id,
-        method,
-        code,
-        displayInfo,
-        details,
-      });
+      await manager.update(PaymentInfo, { id: paymentInfo.id, userId }, input);
     });
 
-    return res.status(StatusCodes.OK).json({ message: '결제정보가 정상적으로 수정되었습니다.' });
-  } catch (err: any) {
-    console.error(err);
-    const status = err.status || StatusCodes.INTERNAL_SERVER_ERROR;
-    return res.status(status).json({ message: '결제 수단 수정 실패' });
-  }
-});
+    res.status(StatusCodes.OK).json({ message: '결제정보가 정상적으로 수정되었습니다.' });
+  })
+);
 
-// 펀딩 결제 예약 취소
-router.delete('/:id', async (req, res) => {
-  const { userId } = res.locals.user;
-  if (!userId) return res.status(StatusCodes.UNAUTHORIZED).json({ message: '로그인이 필요합니다.' });
-  const reservationId = +req.params.id;
-  try {
+// 펀딩 결제 예약 취소: 이력에 취소로 남기고 예약을 삭제한다. 이미 실행된 예약이나 종료된 프로젝트의 예약은 취소할 수 없다.
+router.delete(
+  '/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { userId } = getUser(res);
+    const reservationId = requireId(req.params.id, '잘못된 예약 ID입니다.');
+
     await AppDataSource.transaction(async (manager) => {
       const schedule = await manager.findOne(PaymentSchedule, {
         where: { id: reservationId, userId },
         relations: ['option', 'project', 'paymentInfo'],
       });
-      if (!schedule) throw createError(404, '예약된 정보가 없습니다.');
-      const historyRepo = manager.getRepository(PaymentHistory);
-      const historyEntity = historyRepo.create({
-        userId: userId,
+      if (!schedule) throw new HttpError(StatusCodes.NOT_FOUND, '예약된 정보가 없습니다.');
+
+      if (schedule.executed) {
+        throw new HttpError(StatusCodes.CONFLICT, '이미 결제가 실행된 예약은 취소할 수 없습니다.');
+      }
+      if (schedule.project && dateOf(schedule.project.endDate) < todayKst()) {
+        throw new HttpError(StatusCodes.CONFLICT, '종료된 프로젝트의 예약은 취소할 수 없습니다.');
+      }
+
+      // 결제 수단이나 프로젝트가 삭제된 예약도 취소할 수 있어야 하므로 모든 관계를 null 안전하게 읽는다.
+      const history = manager.getRepository(PaymentHistory).create({
+        userId,
         scheduleId: schedule.id,
-        paymentInfoId: schedule.paymentInfo.id,
-        paymentMethod: schedule.paymentInfo.method,
-        bankCode: schedule.paymentInfo.code,
-        displayInfo: schedule.paymentInfo.displayInfo,
+        paymentInfoId: schedule.paymentInfo?.id ?? null,
+        paymentMethod: schedule.paymentInfo?.method ?? 'UNKNOWN',
+        bankCode: schedule.paymentInfo?.code ?? null,
+        displayInfo: schedule.paymentInfo?.displayInfo ?? null,
         rewardId: schedule.option?.optionId ?? null,
-        projectId: schedule.project.projectId,
+        projectId: schedule.project?.projectId ?? null,
         optionTitle: schedule.option?.title,
         optionAmount: schedule.option?.price,
-        project: schedule.project,
-        projectTitle: schedule.project.title,
-        projectImage: schedule.project.imageUrl,
+        project: schedule.project ?? undefined,
+        projectTitle: schedule.project?.title ?? null,
+        projectImage: schedule.project?.imageUrl ?? null,
         amount: schedule.amount,
         donateAmount: schedule.donateAmount ?? null,
         totalAmount: schedule.totalAmount,
@@ -303,18 +306,13 @@ router.delete('/:id', async (req, res) => {
         status: 'cancel',
         createdAt: schedule.createdAt,
         errorLog: schedule.lastErrorMessage ?? null,
-      } as DeepPartial<PaymentHistory>);
-      await manager.save(historyEntity);
+      } as unknown as DeepPartial<PaymentHistory>);
+      await manager.save(history);
       await manager.remove(schedule);
     });
-    return res.status(StatusCodes.OK).json({
-      message: '예약이 취소되었습니다.',
-    });
-  } catch (err: any) {
-    console.error(err);
-    const status = err.status || StatusCodes.INTERNAL_SERVER_ERROR;
-    return res.status(status).json({ message: '예약 취소 실패' });
-  }
-});
+
+    res.status(StatusCodes.OK).json({ message: '예약이 취소되었습니다.' });
+  })
+);
 
 export default router;
