@@ -1,6 +1,6 @@
 import swaggerUi from 'swagger-ui-express';
 import { serviceConfig } from '@shared/config';
-import { Router } from 'express'; // Add this import
+import { Router } from 'express';
 
 const router = Router();
 

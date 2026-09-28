@@ -1,27 +1,20 @@
 import { Request } from 'express';
 import jwt from 'jsonwebtoken';
-import dotenv from 'dotenv';
 import { DecodedJwt } from '@shared/types';
-dotenv.config();
 
+/** 쿠키의 액세스 토큰을 검증한다. 실패하면 Error를 돌려준다. (HS256 대칭키, auth-service가 발급) */
 export const ensureAuthorization = (req: Request): DecodedJwt | Error => {
   try {
     const token = req.cookies?.accessToken;
 
-    if (token) {
-      const decodedJwt = jwt.verify(token, process.env.PRIVATE_KEY as string) as DecodedJwt;
-      return decodedJwt;
-    } else {
+    if (!token) {
       throw new ReferenceError('JWT must be provided');
     }
+    return jwt.verify(token, process.env.PRIVATE_KEY as string, {
+      algorithms: ['HS256'],
+      issuer: 'Fundi',
+    }) as DecodedJwt;
   } catch (err) {
-    if (err instanceof Error) {
-      console.log(err.name);
-      console.log(err.message);
-      return err;
-    }
-
-    console.log('Unknown error', err);
-    return new Error('알 수 없는 에러가 발생했습니다.');
+    return err instanceof Error ? err : new Error('알 수 없는 에러가 발생했습니다.');
   }
 };

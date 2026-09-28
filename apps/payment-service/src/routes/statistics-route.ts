@@ -197,13 +197,7 @@ router.get("/graph", async (req, res)=>{
   const daysInMonth = end.getDate();
 
   try{
-    const fundingClient = serviceClients['funding-service'];
-    fundingClient.setAuthContext({
-      userId,
-      email,
-      accessToken:  req.header('x-access-token')  || '',
-      refreshToken: req.header('x-refresh-token') || '',
-    });
+    const fundingClient = serviceClients['funding-service'].withAuth({ userId, email });
     const projectList = await fundingClient.get<MyProjectListItem[]>('/profiles/my-projects');
     const myFundingIdList = projectList.data.map( p => p.project_id);
     if (myFundingIdList.length === 0) {

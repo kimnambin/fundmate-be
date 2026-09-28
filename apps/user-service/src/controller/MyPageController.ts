@@ -84,16 +84,13 @@ export const getMyPage = async (req: Request, res: Response) => {
     const followingCount = await followRepo.count({ where: { followerId: userId } });
     const followerCount = await followRepo.count({ where: { followingId: userId } });
 
-    const fundingClient = serviceClients['funding-service'];
-    fundingClient.setAuthContext({ userId });
+    const fundingClient = serviceClients['funding-service'].withAuth({ userId });
     const fundingList = await fundingClient.get(`/api/projects/recent?project_id=${projectIds}`);
 
-    const paymentClient = serviceClients['payment-service'];
-    paymentClient.setAuthContext({ userId });
+    const paymentClient = serviceClients['payment-service'].withAuth({ userId });
     const paymentList = await paymentClient.get(`/statistics/count`);
 
-    const interactionClient = serviceClients['interaction-service'];
-    interactionClient.setAuthContext({ userId });
+    const interactionClient = serviceClients['interaction-service'].withAuth({ userId });
     const interactionList = await interactionClient.get(`/interactionmain`);
 
     return res.status(StatusCode.OK).json({
@@ -218,8 +215,7 @@ export const getMySupportedProjects = async (req: Request, res: Response) => {
   const { userId } = res.locals.user;
 
   try {
-    const paymentClient = serviceClients['payment-service'];
-    paymentClient.setAuthContext({ userId });
+    const paymentClient = serviceClients['payment-service'].withAuth({ userId });
     const paymentList = await paymentClient.get(`/reservations`);
 
     return res.status(StatusCode.OK).json(paymentList.data);
@@ -244,8 +240,7 @@ export const getMyComments = async (req: Request, res: Response) => {
   const url = `/profiles/my-comments${params.toString() ? `?${params}` : ''}`;
 
   try {
-    const fundingClient = serviceClients['funding-service'];
-    fundingClient.setAuthContext({ userId });
+    const fundingClient = serviceClients['funding-service'].withAuth({ userId });
     const CommentsList = await fundingClient.get(url);
 
     return res.status(StatusCode.OK).json(CommentsList.data);
@@ -259,8 +254,7 @@ export const getMyCreatedProjects = async (req: Request, res: Response) => {
   const { userId } = res.locals.user;
 
   try {
-    const fundingClient = serviceClients['funding-service'];
-    fundingClient.setAuthContext({ userId });
+    const fundingClient = serviceClients['funding-service'].withAuth({ userId });
     const completedFundingList = await fundingClient.get(`/profiles/recent-completed`);
     const fundingList = await fundingClient.get(`/profiles/my-projects`);
 
@@ -284,8 +278,7 @@ export const getMyProjectStatistics = async (req: Request, res: Response) => {
     const fundingClient = serviceClients['funding-service'];
     const fundingList = await fundingClient.get(`/profiles/${makerId}`);
 
-    const paymentClient = serviceClients['payment-service'];
-    paymentClient.setAuthContext({ userId });
+    const paymentClient = serviceClients['payment-service'].withAuth({ userId });
     const paymentList = await paymentClient.get(`/statistics/summary?start=${startDate}&end=${endDate}`);
 
     return res.status(StatusCode.OK).json({
@@ -304,8 +297,7 @@ export const getMyProjectPayments = async (req: Request, res: Response) => {
   const limit = req.query.limit;
 
   try {
-    const paymentClient = serviceClients['payment-service'];
-    paymentClient.setAuthContext({ userId });
+    const paymentClient = serviceClients['payment-service'].withAuth({ userId });
     const paymentList = await paymentClient.get(`/statistics/history?page=${page}&limit=${limit}`);
 
     return res.status(StatusCode.OK).json(paymentList.data);

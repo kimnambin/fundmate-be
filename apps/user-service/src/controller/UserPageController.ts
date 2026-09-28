@@ -60,8 +60,7 @@ export const getSupporterProfile = async (req: Request, res: Response) => {
     const followingCount = await followRepo.count({ where: { followerId: supporterId } });
     const followerCount = await followRepo.count({ where: { followingId: supporterId } });
 
-    const paymentClient = serviceClients['payment-service'];
-    paymentClient.setAuthContext({ userId });
+    const paymentClient = serviceClients['payment-service'].withAuth({ userId });
     const paymentList = await paymentClient.get(`/statistics/count`);
 
     return res.status(StatusCode.OK).json({
