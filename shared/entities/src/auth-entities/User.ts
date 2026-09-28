@@ -21,10 +21,11 @@ export class User {
   @Column({ type: 'varchar', length: 100, unique: true })
   email?: string;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
+  // 기본 조회에서 제외한다. 로그인/탈퇴처럼 필요한 곳에서만 `select`에 명시해서 읽는다.
+  @Column({ type: 'varchar', length: 255, nullable: true, select: false })
   password?: string;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
+  @Column({ type: 'varchar', length: 255, nullable: true, select: false })
   salt?: string;
 
   @Column({ type: 'text', nullable: true })

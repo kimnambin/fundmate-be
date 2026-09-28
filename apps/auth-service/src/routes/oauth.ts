@@ -2,8 +2,6 @@ import express from 'express';
 import { google, googleCallBack, kakao, kakaoCallBack, naver, naverCallBack } from '../controller/OAuthController';
 const router = express.Router();
 
-router.use(express.json());
-
 router.get('/google', google);
 router.get('/google/callback', googleCallBack);
 router.get('/kakao', kakao);

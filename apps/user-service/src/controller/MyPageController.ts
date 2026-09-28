@@ -3,8 +3,8 @@ import { AppDataSource } from '../data-source';
 import { Age, Category, Follow, Image, InterestCategory, User } from '@shared/entities';
 import { Token } from '@shared/entities';
 import StatusCode from 'http-status-codes';
-import { serviceClients } from '@shared/config';
-import crypto from 'crypto';
+import { In } from 'typeorm';
+import { refreshTokenKeys, serviceClients, verifyPassword } from '@shared/config';
 
 export const deleteUser = async (req: Request, res: Response) => {
   const userRepo = AppDataSource.getRepository(User);
@@ -23,22 +23,21 @@ export const deleteUser = async (req: Request, res: Response) => {
   }
 
   try {
-    const user = await userRepo.findOneBy({ userId });
+    // password, salt는 기본 조회에서 제외되어 있으므로 명시적으로 읽는다.
+    const user = await userRepo.findOne({ where: { userId }, select: { userId: true, password: true, salt: true } });
 
     if (!user || !user.password || !user.salt) {
       return res.status(StatusCode.NOT_FOUND).json({ message: '존재하지 않는 유저' });
     }
 
-    const hashPassword = crypto.pbkdf2Sync(password, user.salt, 10000, 64, 'sha512').toString('base64');
-
-    if (hashPassword !== user.password) {
+    if (typeof password !== 'string' || !(await verifyPassword(password, user)).valid) {
       return res.status(StatusCode.UNAUTHORIZED).json({ message: '비밀번호 불일치' });
     }
 
     const tokenRecord = await tokenRepo.findOne({
       where: {
         user: { userId: userId },
-        refreshToken,
+        refreshToken: In(refreshTokenKeys(refreshToken)),
         revoke: false,
       },
       relations: ['user'],
